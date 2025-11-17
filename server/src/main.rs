@@ -101,6 +101,12 @@ async fn main() -> anyhow::Result<()> {
         uploads_dir: uploads_dir.clone(),
     };
 
+    let admin_api = Router::new()
+        .route("/login", post(handlers::admin_login_post))
+        .route("/logout", post(handlers::admin_logout))
+        .route("/items", get(handlers::admin_items))
+        .route("/items/:code/delete", post(handlers::admin_delete_item));
+
     let app = Router::new()
         .route("/health", get(health_check))
         // CORS preflight: explicitly handle OPTIONS on API endpoints
@@ -111,10 +117,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/r/:code", get(handlers::result_handler))
         .route("/s/:code", get(handlers::short_handler))
         // Admin JSON API endpoints (frontend handles UI at /admin)
-        .route("/api/admin/login", post(handlers::admin_login_post))
-        .route("/api/admin/logout", post(handlers::admin_logout))
-        .route("/api/admin/items", get(handlers::admin_items))
-        .route("/api/admin/items/:code/delete", post(handlers::admin_delete_item))
+        .nest("/api/admin", admin_api.clone())
+        .nest("/admin", admin_api)
         .with_state(app_state)
         // Set individual field limit to 1 GiB for multipart uploads
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
