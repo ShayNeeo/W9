@@ -375,7 +375,7 @@ pub async fn admin_logout(State(state): State<AppState>, cookie: Option<TypedHea
     }
     let mut headers = HeaderMap::new();
     headers.insert(axum::http::header::SET_COOKIE, HeaderValue::from_static("w9_admin=; Max-Age=0; Path=/"));
-    (headers, Redirect::to("/admin/login")).into_response()
+    (StatusCode::OK, headers, Json(serde_json::json!({"success": true}))).into_response()
 }
 
 #[debug_handler]
@@ -423,7 +423,6 @@ pub async fn admin_items(State(state): State<AppState>, cookie: Option<TypedHead
     (StatusCode::OK, Json(items)).into_response()
 }
 
-// THIS IS THE RESTORED AND CORRECTED FUNCTION
 #[debug_handler]
 pub async fn admin_delete_item(
     State(state): State<AppState>,
@@ -431,7 +430,7 @@ pub async fn admin_delete_item(
     cookie: Option<TypedHeader<Cookie>>,
 ) -> impl IntoResponse {
     if !require_admin_token(&state.db_path, extract_admin_token(cookie).as_deref()).await {
-        return Redirect::to("/admin/login").into_response();
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error":"Unauthorized"}))).into_response();
     }
     // Query needed info inside a short-lived DB connection (avoid holding Connection across awaits)
     let kind_value: Option<(String, String)> = {
@@ -460,7 +459,7 @@ pub async fn admin_delete_item(
         let conn = Connection::open(&state.db_path).unwrap();
         let _ = conn.execute("DELETE FROM items WHERE code = ?1", params![code]);
     }
-    Redirect::to("/admin/items").into_response()
+    (StatusCode::OK, Json(serde_json::json!({"success": true}))).into_response()
 }
 
 

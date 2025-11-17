@@ -107,10 +107,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/upload", axum::routing::options(handlers::cors_preflight))
         // API endpoints only (no UI)
         .route("/api/upload", post(handlers::api_upload))
-        // Short link redirects (no UI template)
+        // Short link redirects
         .route("/r/:code", get(handlers::result_handler))
         .route("/s/:code", get(handlers::short_handler))
-        // Admin API endpoints (backend only)
+        // Admin JSON API endpoints (frontend handles UI)
         .route("/admin/login", post(handlers::admin_login_post))
         .route("/admin/logout", post(handlers::admin_logout))
         .route("/admin/items", get(handlers::admin_items))

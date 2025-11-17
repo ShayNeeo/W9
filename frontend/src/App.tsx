@@ -102,14 +102,17 @@ function AdminPanel() {
 
   const handleLogout = async () => {
     try {
-      await fetch(joinUrl(API_BASE, '/admin/logout'), { 
+      const resp = await fetch(joinUrl(API_BASE, '/admin/logout'), { 
         method: 'POST', 
         credentials: 'include' 
       })
+      if (resp.ok) {
+        window.location.href = '/'
+      }
     } catch (err) {
       console.error('Logout error:', err)
+      window.location.href = '/'
     }
-    window.location.href = '/'
   }
 
   useEffect(() => {
@@ -184,9 +187,11 @@ function AdminPanel() {
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.kind}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                      <button onClick={() => {
-                        fetch(joinUrl(API_BASE, `/admin/items/${item.code}/delete`), { method: 'POST', credentials: 'include' })
-                        setItems(items.filter((i: any) => i.code !== item.code))
+                      <button onClick={async () => {
+                        const resp = await fetch(joinUrl(API_BASE, `/admin/items/${item.code}/delete`), { method: 'POST', credentials: 'include' })
+                        if (resp.ok) {
+                          setItems(items.filter((i: any) => i.code !== item.code))
+                        }
                       }} className="button" style={{ fontSize: '12px' }}>Delete</button>
                     </td>
                   </tr>
