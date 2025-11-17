@@ -45,6 +45,37 @@ is_enabled() {
   esac
 }
 
+stop_existing_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    if sudo systemctl list-unit-files "$SERVICE_NAME.service" >/dev/null 2>&1; then
+      if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+        echo "Stopping existing $SERVICE_NAME service"
+        sudo systemctl stop "$SERVICE_NAME" || true
+        sleep 1
+      fi
+    fi
+  fi
+}
+
+kill_processes_on_port() {
+  if command -v ss >/dev/null 2>&1; then
+    local pids
+    pids=$(sudo ss -ltnp 2>/dev/null | awk -v port=":$APP_PORT " '$0 ~ port {print $7}' | sed 's/users:(//' | sed 's/)//' | sed 's/"//g' | tr ',' '\n' | sed -n 's/^pid=\([0-9]\+\).*$/\1/p' | sort -u)
+    if [ -n "$pids" ]; then
+      echo "Killing processes using port $APP_PORT: $pids"
+      for pid in $pids; do
+        sudo kill "$pid" 2>/dev/null || true
+      done
+      sleep 1
+    fi
+  elif command -v fuser >/dev/null 2>&1; then
+    sudo fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
+  fi
+}
+
+stop_existing_service
+kill_processes_on_port
+
 # Choose a non-root user for building when possible
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   BUILD_USER="$SUDO_USER"
