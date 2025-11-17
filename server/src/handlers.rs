@@ -131,10 +131,9 @@ fn try_generate_preview(original_path: &StdPath, preview_path: &StdPath) -> Resu
             
             // Try to write at very low quality
             let mut buf = Vec::new();
-            let mut cur = std::io::Cursor::new(&mut buf);
             for quality in [45u8, 35, 25, 15] {
                 buf.clear();
-                cur = std::io::Cursor::new(&mut buf);
+                let mut cur = std::io::Cursor::new(&mut buf);
                 if fallback_img.write_to(&mut cur, ImageOutputFormat::Jpeg(quality)).is_ok() {
                     if buf.len() <= PREVIEW_MAX_BYTES {
                         tracing::warn!("Fallback succeeded at quality={}, size={}KB", quality, buf.len() / 1024);
@@ -145,7 +144,7 @@ fn try_generate_preview(original_path: &StdPath, preview_path: &StdPath) -> Resu
             
             // Last resort: use absolute minimum
             buf.clear();
-            cur = std::io::Cursor::new(&mut buf);
+            let mut cur = std::io::Cursor::new(&mut buf);
             fallback_img.write_to(&mut cur, ImageOutputFormat::Jpeg(10)).map_err(|e| format!("encode jpeg: {}", e))?;
             tracing::warn!("Last resort fallback: quality=10, size={}KB", buf.len() / 1024);
             std::fs::write(preview_path, &buf).map_err(|e| format!("write preview: {}", e))

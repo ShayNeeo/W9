@@ -49,9 +49,16 @@ async fn main() -> anyhow::Result<()> {
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "data/w9.db".to_string());
     // Ensure database directory exists
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
-        std::fs::create_dir_all(parent).ok();
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::error!("Failed to create database directory {:?}: {}", parent, e);
+            return Err(anyhow::anyhow!("Failed to create database directory: {}", e));
+        }
     }
-    let conn = Connection::open(&db_path)?;
+    let conn = Connection::open(&db_path)
+        .map_err(|e| {
+            tracing::error!("Failed to open database at {}: {}", db_path, e);
+            anyhow::anyhow!("Database error: {}", e)
+        })?;
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS items (
@@ -82,7 +89,10 @@ async fn main() -> anyhow::Result<()> {
     let uploads_dir = std::env::var("UPLOADS_DIR")
         .unwrap_or_else(|_| "uploads".to_string());
     // Ensure uploads directory exists
-    std::fs::create_dir_all(&uploads_dir).ok();
+    if let Err(e) = std::fs::create_dir_all(&uploads_dir) {
+        tracing::error!("Failed to create uploads directory {}: {}", uploads_dir, e);
+        return Err(anyhow::anyhow!("Failed to create uploads directory: {}", e));
+    }
     tracing::info!("Uploads directory: {}", uploads_dir);
 
     let app_state = handlers::AppState { 
@@ -120,12 +130,26 @@ async fn main() -> anyhow::Result<()> {
         )
         .nest_service("/files", get_service(ServeDir::new(&uploads_dir)).handle_error(|_| async { (StatusCode::INTERNAL_SERVER_ERROR, "IO Error") }));
 
-    let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
+    let addr: SocketAddr = format!("{}:{}", host, port).parse()
+        .map_err(|e| {
+            tracing::error!("Invalid address {}:{} - {}", host, port, e);
+            anyhow::anyhow!("Invalid address: {}", e)
+        })?;
     tracing::info!("🚀 Server listening on {}", addr);
     
     // Axum 0.7 API: use TcpListener + axum::serve
-    let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    let listener = TcpListener::bind(addr).await
+        .map_err(|e| {
+            tracing::error!("Failed to bind to {}: {}", addr, e);
+            anyhow::anyhow!("Failed to bind: {}", e)
+        })?;
+    
+    tracing::info!("✓ Server started successfully");
+    axum::serve(listener, app).await
+        .map_err(|e| {
+            tracing::error!("Server error: {}", e);
+            anyhow::anyhow!("Server error: {}", e)
+        })?;
 
     Ok(())
 }

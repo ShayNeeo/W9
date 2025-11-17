@@ -234,6 +234,15 @@ server {
     root $FRONTEND_PUBLIC;
     index index.html;
 
+    # Health check endpoint - proxy to backend
+    location /health {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_set_header Host \$host;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 2s;
+        access_log off;
+    }
+
     # API routes and uploads - proxy to backend
     location /api/ {
         proxy_pass http://127.0.0.1:${APP_PORT};
