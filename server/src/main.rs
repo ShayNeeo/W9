@@ -21,6 +21,11 @@ async fn health_check() -> Json<serde_json::Value> {
     }))
 }
 
+async fn favicon() -> &'static [u8] {
+    // Return a minimal favicon (1x1 transparent PNG)
+    &[137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 0, 1, 0, 0, 5, 0, 1, 13, 10, 45, 180, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing with better formatting for production
@@ -79,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/favicon.ico", get(favicon))
         // CORS preflight: explicitly handle OPTIONS on API endpoints
         .route("/api/upload", axum::routing::options(handlers::cors_preflight))
         .route("/", get(handlers::index_handler))
