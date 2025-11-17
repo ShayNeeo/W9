@@ -43,15 +43,16 @@ echo "Port $APP_PORT is free"
 BUILD_USER="${SUDO_USER:-$(whoami)}"
 [ "$BUILD_USER" = "root" ] && BUILD_USER=$(stat -c '%U' "$ROOT_DIR")
 
-# Install packages
+# Install packages (only if needed)
+echo "Checking packages..."
 sudo apt-get update -qq
-sudo apt-get install -y build-essential pkg-config libsqlite3-dev nodejs npm nginx ufw openssl >/dev/null
+sudo apt-get install -y build-essential pkg-config libsqlite3-dev nodejs npm nginx ufw openssl 2>&1 | grep -E "Setting up|already|0 upgraded" | tail -5
 
 # Create service user
 id -u $SERVICE_USER >/dev/null 2>&1 || sudo useradd --system --create-home --home-dir $INSTALL_DIR --shell /usr/sbin/nologin $SERVICE_USER
 
-# Build backend (clean first to force rebuild)
-rm -rf "$ROOT_DIR/target/release/w9" 2>/dev/null || true
+# Build backend
+echo "Building backend..."
 if [ "$BUILD_USER" != "root" ]; then
   sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && cargo build --release"
 else
@@ -59,19 +60,23 @@ else
 fi
 
 # Build frontend
+echo "Building frontend..."
 cd "$ROOT_DIR/frontend"
 npm install --silent
-npm run build
+npm run build 2>&1 | grep -E "error|warning|✓|built" || true
 
 # Install binary
+echo "Installing binary..."
 sudo mkdir -p $INSTALL_DIR $DATA_DIR $UPLOADS_DIR
-sudo cp -f "$ROOT_DIR/target/release/w9" "$INSTALL_DIR/w9"
+sudo cp "$ROOT_DIR/target/release/w9" "$INSTALL_DIR/w9"
 sudo chown root:$SERVICE_USER "$INSTALL_DIR/w9"
 sudo chmod 750 "$INSTALL_DIR/w9"
 sudo chown -R $SERVICE_USER:$SERVICE_USER $DATA_DIR $UPLOADS_DIR
 
 # Install frontend
+echo "Installing frontend..."
 sudo mkdir -p $FRONTEND_PUBLIC
+sudo rm -rf $FRONTEND_PUBLIC/* 2>/dev/null || true
 sudo cp -r "$ROOT_DIR/frontend/dist"/* $FRONTEND_PUBLIC/
 sudo chown -R root:root $FRONTEND_PUBLIC
 
@@ -116,25 +121,23 @@ if [ ! -f "$SSL_DIR/cert.pem" ]; then
   echo "✓ Self-signed certificate created"
 fi
 
-# Nginx config
-sudo tee /etc/nginx/sites-available/$SERVICE_NAME >/dev/null <<EOF
+# Nginx config (DRY - single source of truth with conditionals)
+echo "Configuring nginx..."
+sudo tee /etc/nginx/sites-available/$SERVICE_NAME >/dev/null <<'NGINX_EOF'
+# Backend proxy settings
+upstream backend {
+    server 127.0.0.1:$APP_PORT;
+}
+
+# HTTP server (redirect to HTTPS)
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
-
-    client_max_body_size 1024M;
-    root $FRONTEND_PUBLIC;
-    index index.html;
-
-    location /health { proxy_pass http://127.0.0.1:$APP_PORT; }
-    location /api/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location /r/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location /s/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location /files/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location / { try_files \$uri \$uri/ /index.html; }
+    return 301 https://$host$request_uri;
 }
 
+# HTTPS server
 server {
     listen 443 ssl default_server;
     listen [::]:443 ssl default_server;
@@ -144,50 +147,65 @@ server {
     ssl_certificate $SSL_DIR/cert.pem;
     ssl_certificate_key $SSL_DIR/key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
 
     client_max_body_size 1024M;
     root $FRONTEND_PUBLIC;
     index index.html;
 
+    # Backend proxies
     location /health { proxy_pass http://127.0.0.1:$APP_PORT; }
-    location /api/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location /r/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location /s/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location /files/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host \$host; }
-    location / { try_files \$uri \$uri/ /index.html; }
+    location /api/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host $host; }
+    location /r/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host $host; }
+    location /s/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host $host; }
+    location /files/ { proxy_pass http://127.0.0.1:$APP_PORT; proxy_set_header Host $host; }
+
+    # Frontend SPA
+    location / { try_files $uri $uri/ /index.html; }
+
+    # Caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|webmanifest)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
 }
-EOF
+NGINX_EOF
 
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/$SERVICE_NAME
 
 # Start services
+echo "Starting services..."
 sudo systemctl daemon-reload
-sudo systemctl enable $SERVICE_NAME
-sudo systemctl restart $SERVICE_NAME
-sudo systemctl enable nginx
-sudo systemctl restart nginx
-sudo ufw allow 80/tcp 2>/dev/null || true
-sudo ufw allow 443/tcp 2>/dev/null || true
+sudo systemctl enable $SERVICE_NAME nginx
+sudo systemctl restart $SERVICE_NAME nginx
+sudo ufw allow 80/tcp 443/tcp 2>/dev/null || true
 
-# Wait & verify
+# Verify deployment
+echo ""
+echo "=== VERIFICATION ==="
 sleep 2
-sudo systemctl is-active --quiet $SERVICE_NAME && echo "✓ Service running" || echo "✗ Service failed"
-sudo systemctl is-active --quiet nginx && echo "✓ Nginx running" || echo "✗ Nginx failed"
-curl -sf http://127.0.0.1:$APP_PORT/health >/dev/null && echo "✓ Backend healthy" || echo "✗ Backend unhealthy"
 
-echo "
-✓ Done!
-Domain: $DOMAIN
-Backend: http://127.0.0.1:$APP_PORT
-Frontend: $FRONTEND_PUBLIC
-SSL: Self-signed certificate at $SSL_DIR
+# Check services
+for service in $SERVICE_NAME nginx; do
+    if sudo systemctl is-active --quiet $service; then
+        echo "✓ $service running"
+    else
+        echo "✗ $service FAILED"
+        exit 1
+    fi
+done
 
-Cloudflare SSL modes:
-  - Flexible: Cloudflare uses HTTPS, origin uses HTTP (port 80)
-  - Full: Cloudflare uses HTTPS, origin uses HTTPS (port 443, self-signed OK)
-  - Full Strict: Requires valid CA-signed certificate
+# Check backend
+if curl -sf http://127.0.0.1:$APP_PORT/health >/dev/null; then
+    echo "✓ Backend healthy"
+else
+    echo "✗ Backend unhealthy"
+    exit 1
+fi
 
-Status: sudo systemctl status $SERVICE_NAME
-Logs: sudo journalctl -u $SERVICE_NAME -f
-"
+echo ""
+echo "✓ Deploy successful!"
+echo "Domain: $DOMAIN"
+echo "Status: sudo systemctl status $SERVICE_NAME"
+echo "Logs: sudo journalctl -u $SERVICE_NAME -f"
