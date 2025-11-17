@@ -313,24 +313,57 @@ async fn require_admin_token(db_path: &str, token_opt: Option<&str>) -> bool {
 pub struct AdminLoginForm { pub username: String, pub password: String }
 
 pub async fn admin_login_post(State(state): State<AppState>, Form(f): Form<AdminLoginForm>) -> impl IntoResponse {
-    let conn = Connection::open(&state.db_path).unwrap();
+    let conn = match Connection::open(&state.db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to open database: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Database error"}))).into_response();
+        }
+    };
+
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM admin", [], |r| r.get(0)).unwrap_or(0);
     if count == 0 {
         let salt = generate_token(16);
         let hash = hash_with_salt(&f.password, &salt);
-        let _ = conn.execute("INSERT INTO admin (id, username, password_hash, salt) VALUES (1, ?1, ?2, ?3)", params![f.username, hash, salt]);
+        if let Err(e) = conn.execute("INSERT INTO admin (id, username, password_hash, salt) VALUES (1, ?1, ?2, ?3)", params![f.username, hash, salt]) {
+            tracing::error!("Failed to create admin user: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to create user"}))).into_response();
+        }
+        tracing::info!("Created first admin user: {}", f.username);
     }
+
     let row = conn
         .prepare("SELECT password_hash, salt FROM admin WHERE username = ?1")
         .and_then(|mut s| s.query_row(params![f.username], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))));
-    let (hash, salt) = match row { Ok(v) => v, Err(_) => return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Invalid credentials"}))).into_response() };
-    if hash != hash_with_salt(&f.password, &salt) { return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Invalid credentials"}))).into_response(); }
+    
+    let (hash, salt) = match row {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Login failed for user '{}': {}", f.username, e);
+            return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Invalid credentials"}))).into_response();
+        }
+    };
+
+    if hash != hash_with_salt(&f.password, &salt) {
+        tracing::warn!("Invalid password for user '{}'", f.username);
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Invalid credentials"}))).into_response();
+    }
 
     let token = generate_token(48);
-    let _ = conn.execute("INSERT INTO sessions (token, created_at) VALUES (?1, strftime('%s','now'))", params![token.clone()]);
+    if let Err(e) = conn.execute("INSERT INTO sessions (token, created_at) VALUES (?1, strftime('%s','now'))", params![token.clone()]) {
+        tracing::error!("Failed to create session: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to create session"}))).into_response();
+    }
+
     let mut headers = HeaderMap::new();
     let cookie = format!("w9_admin={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000", token);
+    if let Err(e) = HeaderValue::from_str(&cookie) {
+        tracing::error!("Failed to create cookie header: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Server error"}))).into_response();
+    }
     headers.insert(axum::http::header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    
+    tracing::info!("Successful login for user '{}'", f.username);
     (StatusCode::OK, headers, Json(serde_json::json!({"success": true}))).into_response()
 }
 

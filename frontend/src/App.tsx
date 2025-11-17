@@ -42,10 +42,16 @@ function AdminLogin() {
         body: form,
         credentials: 'include'
       })
-      if (resp.ok || resp.status === 302 || resp.status === 301) {
+      const text = await resp.text()
+      if (resp.ok) {
         window.location.href = '/admin'
       } else {
-        setError('Invalid credentials')
+        try {
+          const data = JSON.parse(text)
+          setError(data.error || `Error: ${resp.status}`)
+        } catch {
+          setError(text || `HTTP ${resp.status}`)
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Login failed')
