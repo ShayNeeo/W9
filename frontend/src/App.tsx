@@ -18,14 +18,93 @@ type Result = SuccessResult | ErrorResult
 // Simple router
 function useRoute() {
   const path = window.location.pathname
+  if (path === '/admin/login') return 'admin-login'
   if (path.startsWith('/admin')) return 'admin'
   return 'home'
+}
+
+function AdminLogin() {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleLogin(e: FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.append('username', username)
+      form.append('password', password)
+      const resp = await fetch(joinUrl(API_BASE, '/admin/login'), {
+        method: 'POST',
+        body: form,
+        credentials: 'include'
+      })
+      if (resp.ok || resp.status === 302 || resp.status === 301) {
+        window.location.href = '/admin'
+      } else {
+        setError('Invalid credentials')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="app">
+      <main className="container">
+        <h1>Admin Login</h1>
+        <form onSubmit={handleLogin} className="form" style={{ maxWidth: '300px' }}>
+          <label className="label">
+            Username
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="input"
+              required
+            />
+          </label>
+          <label className="label">
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input"
+              required
+            />
+          </label>
+          {error && <div className="error">{error}</div>}
+          <button type="submit" className="button" disabled={loading}>
+            {loading ? 'Logging in...' : 'Login'}
+          </button>
+        </form>
+      </main>
+    </div>
+  )
 }
 
 function AdminPanel() {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const handleLogout = async () => {
+    try {
+      await fetch(joinUrl(API_BASE, '/admin/logout'), { 
+        method: 'POST', 
+        credentials: 'include' 
+      })
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
+    window.location.href = '/'
+  }
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -35,9 +114,18 @@ function AdminPanel() {
           window.location.href = '/admin/login'
           return
         }
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        const data = await resp.json()
-        setItems(data)
+        if (!resp.ok) {
+          const text = await resp.text()
+          throw new Error(`HTTP ${resp.status}: ${text}`)
+        }
+        const text = await resp.text()
+        if (!text) {
+          setItems([])
+          setLoading(false)
+          return
+        }
+        const data = JSON.parse(text)
+        setItems(Array.isArray(data) ? data : [])
       } catch (err: any) {
         setError(err?.message || 'Failed to load items')
       } finally {
@@ -51,37 +139,40 @@ function AdminPanel() {
     <div className="app">
       <main className="container">
         <h1>Admin Panel</h1>
-        <button onClick={() => {
-          fetch(joinUrl(API_BASE, '/admin/logout'), { method: 'POST', credentials: 'include' })
-          window.location.href = '/'
-        }} className="button">Logout</button>
+        <button onClick={handleLogout} className="button">Logout</button>
         {loading && <p>Loading items...</p>}
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <table style={{ width: '100%', marginTop: '20px', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ border: '1px solid #ddd', padding: '8px' }}>Code</th>
-              <th style={{ border: '1px solid #ddd', padding: '8px' }}>Type</th>
-              <th style={{ border: '1px solid #ddd', padding: '8px' }}>Value</th>
-              <th style={{ border: '1px solid #ddd', padding: '8px' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item: any) => (
-              <tr key={item.code}>
-                <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.code}</td>
-                <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.kind}</td>
-                <td style={{ border: '1px solid #ddd', padding: '8px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</td>
-                <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                  <button onClick={() => {
-                    fetch(joinUrl(API_BASE, `/admin/items/${item.code}/delete`), { method: 'POST', credentials: 'include' })
-                    setItems(items.filter((i: any) => i.code !== item.code))
-                  }} className="button" style={{ fontSize: '12px' }}>Delete</button>
-                </td>
+        {error && <p style={{ color: 'red' }}>Error: {error}</p>}
+        {!loading && !error && (
+          <table style={{ width: '100%', marginTop: '20px', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Code</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Type</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Value</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr><td colSpan={4} style={{ padding: '8px', textAlign: 'center' }}>No items</td></tr>
+              ) : (
+                items.map((item: any) => (
+                  <tr key={item.code}>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.code}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.kind}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                      <button onClick={() => {
+                        fetch(joinUrl(API_BASE, `/admin/items/${item.code}/delete`), { method: 'POST', credentials: 'include' })
+                        setItems(items.filter((i: any) => i.code !== item.code))
+                      }} className="button" style={{ fontSize: '12px' }}>Delete</button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </main>
     </div>
   )
@@ -90,6 +181,9 @@ function AdminPanel() {
 export default function App() {
   const route = useRoute()
 
+  if (route === 'admin-login') {
+    return <AdminLogin />
+  }
   if (route === 'admin') {
     return <AdminPanel />
   }

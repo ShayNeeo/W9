@@ -323,15 +323,15 @@ pub async fn admin_login_post(State(state): State<AppState>, Form(f): Form<Admin
     let row = conn
         .prepare("SELECT password_hash, salt FROM admin WHERE username = ?1")
         .and_then(|mut s| s.query_row(params![f.username], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))));
-    let (hash, salt) = match row { Ok(v) => v, Err(_) => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response() };
-    if hash != hash_with_salt(&f.password, &salt) { return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(); }
+    let (hash, salt) = match row { Ok(v) => v, Err(_) => return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Invalid credentials"}))).into_response() };
+    if hash != hash_with_salt(&f.password, &salt) { return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Invalid credentials"}))).into_response(); }
 
     let token = generate_token(48);
     let _ = conn.execute("INSERT INTO sessions (token, created_at) VALUES (?1, strftime('%s','now'))", params![token.clone()]);
     let mut headers = HeaderMap::new();
     let cookie = format!("w9_admin={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000", token);
     headers.insert(axum::http::header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
-    (headers, Redirect::to("/admin")).into_response()
+    (StatusCode::OK, headers, Json(serde_json::json!({"success": true}))).into_response()
 }
 
 pub async fn admin_logout(State(state): State<AppState>, cookie: Option<TypedHeader<Cookie>>) -> impl IntoResponse {
