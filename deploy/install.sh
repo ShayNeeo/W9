@@ -101,7 +101,7 @@ fi
 echo "Building frontend..."
 FRONTEND_DIR="$ROOT_DIR/frontend"
 FRONTEND_DIST="$FRONTEND_DIR/dist"
-FRONTEND_PUBLIC="/var/www/w9"
+FRONTEND_PUBLIC=${FRONTEND_PUBLIC:-/var/www/w9}
 if [ -d "$FRONTEND_DIR" ]; then
   cd "$FRONTEND_DIR"
   npm install --prefer-offline
@@ -225,11 +225,12 @@ if is_enabled "$NGINX_ENABLE"; then
   
   sudo tee "$NGINX_SITE_PATH" > /dev/null <<NGX
 server {
-    listen 80;
+    listen 80 default_server;
+    listen [::]:80 default_server;
     server_name ${DOMAIN};
 
     client_max_body_size 1024M;
-    root /var/www/w9;
+    root $FRONTEND_PUBLIC;
     index index.html;
 
     # API routes and uploads - proxy to backend
