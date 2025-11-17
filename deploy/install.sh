@@ -155,18 +155,26 @@ server {
     root FRONTEND_PUBLIC_PLACEHOLDER;
     index index.html;
 
-    # Backend proxies
+    # Backend proxies (must be before regex locations)
     location /health { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; }
     location /api/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
     location /r/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
     location /s/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
-    location /files/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
+    
+    # Files - serve with caching headers
+    location /files/ {
+        proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER;
+        proxy_set_header Host $host;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
 
     # Frontend SPA
     location / { try_files $uri $uri/ /index.html; }
 
-    # Caching
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|webmanifest)$ {
+    # Caching for frontend assets only (not /files/)
+    location ~ ^/(?!files/).*\.(js|css|png|jpg|jpeg|gif|ico|svg|webmanifest)$ {
+        try_files $uri =404;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
