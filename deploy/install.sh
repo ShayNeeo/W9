@@ -40,8 +40,8 @@ if [[ ! "$BASE_URL" =~ ^https?:// ]]; then
 fi
 # Whether the API DNS is proxied behind Cloudflare (orange cloud)
 # If enabled and CERTBOT is enabled, we will use DNS-01 with Cloudflare.
-PROXIED_API=${PROXIED_API:-0}
-CERTBOT_ENABLE=${CERTBOT_ENABLE:-1}
+PROXIED_API=${PROXIED_API:-1}
+CERTBOT_ENABLE=${CERTBOT_ENABLE:-0}
 CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
 # Cloudflare API token for DNS-01 (scoped to zone DNS edit)
 CF_API_TOKEN=${CF_API_TOKEN:-}
@@ -271,23 +271,52 @@ fi
 
 ### Nginx site setup (optional)
 if is_enabled "$NGINX_ENABLE"; then
-  # Try to obtain LE cert upfront (no nginx port conflicts if using standalone)
-  obtain_certbot_cert "$API_DOMAIN" "$CERTBOT_EMAIL" "$PROXIED_API"
-
-  # Choose TLS cert/key paths
-  TLS_CERT_PATH="/etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem"
-  TLS_KEY_PATH="/etc/letsencrypt/live/${API_DOMAIN}/privkey.pem"
-  if [ ! -f "$TLS_CERT_PATH" ] || [ ! -f "$TLS_KEY_PATH" ]; then
-    # Fallback to Cloudflare Origin certs if LE is not available
-    TLS_CERT_PATH="$CF_SSL_DIR/${NGINX_SERVER_NAME}.crt"
-    TLS_KEY_PATH="$CF_SSL_DIR/${NGINX_SERVER_NAME}.key"
-    echo "Using TLS from $TLS_CERT_PATH (LE not found)"
-  else
-    echo "Using Let's Encrypt cert at $TLS_CERT_PATH"
+  # For Cloudflare proxied domains, we don't need LE certs - CF handles HTTPS
+  if ! is_enabled "$PROXIED_API"; then
+    # Only obtain LE cert if NOT behind Cloudflare
+    obtain_certbot_cert "$API_DOMAIN" "$CERTBOT_EMAIL" "$PROXIED_API"
   fi
 
-  echo "Generating nginx site config for $API_DOMAIN"
-  sudo tee "$NGINX_SITE_PATH" > /dev/null <<NGX
+  echo "Generating nginx site config for $API_DOMAIN (Cloudflare proxied: $PROXIED_API)"
+  
+  # For Cloudflare-proxied domains: use HTTP only (CF handles HTTPS)
+  if is_enabled "$PROXIED_API"; then
+    sudo tee "$NGINX_SITE_PATH" > /dev/null <<NGX
+server {
+    listen 80;
+    http2 on;
+    server_name ${API_DOMAIN};
+
+    client_max_body_size 1024M;
+
+    # Cloudflare will handle SSL/TLS, so we trust CF headers
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+
+    location / {
+        proxy_pass http://127.0.0.1:$APP_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 90s;
+    }
+}
+NGX
+    echo "Cloudflare-proxied domain configured (HTTP only - CF handles HTTPS)"
+  else
+    # Non-Cloudflare setup: use HTTPS
+    TLS_CERT_PATH="/etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem"
+    TLS_KEY_PATH="/etc/letsencrypt/live/${API_DOMAIN}/privkey.pem"
+    if [ ! -f "$TLS_CERT_PATH" ] || [ ! -f "$TLS_KEY_PATH" ]; then
+      TLS_CERT_PATH="$CF_SSL_DIR/${NGINX_SERVER_NAME}.crt"
+      TLS_KEY_PATH="$CF_SSL_DIR/${NGINX_SERVER_NAME}.key"
+      echo "Using TLS from $TLS_CERT_PATH"
+    else
+      echo "Using Let's Encrypt cert at $TLS_CERT_PATH"
+    fi
+
+    sudo tee "$NGINX_SITE_PATH" > /dev/null <<NGX
 server {
     listen 80;
     server_name ${API_DOMAIN};
@@ -320,21 +349,20 @@ server {
     }
 }
 NGX
+  fi
 
   echo "Enabling nginx site"
   sudo ln -sf "$NGINX_SITE_PATH" "/etc/nginx/sites-enabled/$SERVICE_NAME"
-
-  if [[ "$TLS_CERT_PATH" == *"letsencrypt"* ]]; then
-    echo "Let's Encrypt cert configured for ${API_DOMAIN}"
-  else
-    echo "Warning: Using fallback TLS at $TLS_CERT_PATH. Consider enabling CERTBOT or placing Cloudflare Origin certs." >&2
-  fi
 
   echo "Testing nginx configuration"
   sudo nginx -t || true
 
   if command -v ufw >/dev/null 2>&1; then
-    sudo ufw allow 'Nginx Full' || true
+    if is_enabled "$PROXIED_API"; then
+      sudo ufw allow 80/tcp || true
+    else
+      sudo ufw allow 'Nginx Full' || true
+    fi
   fi
 fi
 
