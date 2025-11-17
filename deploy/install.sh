@@ -77,6 +77,8 @@ sudo cp "$ROOT_DIR/target/release/w9" "$INSTALL_DIR/w9"
 sudo chown root:$SERVICE_USER "$INSTALL_DIR/w9"
 sudo chmod 750 "$INSTALL_DIR/w9"
 sudo chown -R $SERVICE_USER:$SERVICE_USER $DATA_DIR $UPLOADS_DIR
+sudo chmod -R 755 $DATA_DIR $UPLOADS_DIR
+sudo chmod 644 $DATA_DIR/* 2>/dev/null || true
 
 # Install frontend
 echo "Installing frontend..."
