@@ -378,6 +378,49 @@ if is_enabled "$NGINX_ENABLE"; then
           echo "  This may cause Cloudflare 521 errors" >&2
           echo "  Check nginx logs: sudo journalctl -u nginx -n 50" >&2
         fi
+        
+        # DNS and proxy diagnostics
+        if [ -n "${DOMAIN:-}" ]; then
+          echo ""
+          echo "🔍 DNS & Cloudflare Proxy Diagnostics:"
+          
+          # Get VPS public IP
+          VPS_IP=$(curl -s -m 3 https://api.ipify.org 2>/dev/null || curl -s -m 3 https://ifconfig.me 2>/dev/null || echo "unknown")
+          echo "  VPS Public IP: $VPS_IP"
+          
+          # Check DNS resolution
+          if command -v dig >/dev/null 2>&1; then
+            DNS_RESULT=$(dig +short "$DOMAIN" @8.8.8.8 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
+            if [ -n "$DNS_RESULT" ]; then
+              echo "  DNS resolves to: $DNS_RESULT"
+              
+              # Check if it's a Cloudflare IP (common ranges)
+              if echo "$DNS_RESULT" | grep -qE '^(104\.|172\.64\.|172\.65\.|172\.66\.|172\.67\.|172\.68\.|172\.69\.|172\.70\.|172\.71\.|198\.41\.|173\.245\.)'; then
+                echo "  ⚠️  WARNING: DNS still points to Cloudflare IPs (proxy is ON)" >&2
+                echo "     Turn OFF proxy in Cloudflare dashboard (gray cloud → orange cloud)" >&2
+              elif [ "$DNS_RESULT" != "$VPS_IP" ] && [ "$VPS_IP" != "unknown" ]; then
+                echo "  ⚠️  WARNING: DNS ($DNS_RESULT) doesn't match VPS IP ($VPS_IP)" >&2
+                echo "     Update DNS A record to point to: $VPS_IP" >&2
+              else
+                echo "  ✓ DNS correctly points to VPS IP"
+              fi
+            else
+              echo "  ⚠️  WARNING: Could not resolve DNS for $DOMAIN" >&2
+            fi
+          fi
+          
+          # Test domain access
+          echo "  Testing domain access..."
+          DOMAIN_TEST=$(curl -s -m 5 -o /dev/null -w "%{http_code}" "http://$DOMAIN/health" 2>/dev/null || echo "000")
+          if [ "$DOMAIN_TEST" = "200" ]; then
+            echo "  ✓ Domain is accessible via HTTP"
+          elif [ "$DOMAIN_TEST" = "000" ]; then
+            echo "  ⚠️  Domain not reachable (connection failed)" >&2
+            echo "     This is normal if DNS hasn't propagated yet" >&2
+          else
+            echo "  ⚠️  Domain returned HTTP $DOMAIN_TEST" >&2
+          fi
+        fi
       fi
     fi
   fi
@@ -412,11 +455,26 @@ echo "  Via nginx:       curl http://127.0.0.1/health"
 echo "  Check port:      ss -tln | grep $APP_PORT"
 echo ""
 echo "🔍 Troubleshooting Cloudflare 521:"
-echo "  1. Verify backend is running: sudo systemctl status $SERVICE_NAME"
+echo ""
+echo "If you can access via VPS IP:80 but domain shows 521:"
+echo "  1. Check DNS resolution: dig +short $DOMAIN @8.8.8.8"
+echo "     - Should show your VPS IP (not Cloudflare IPs like 104.x.x.x)"
+echo "  2. Verify proxy is OFF in Cloudflare dashboard"
+echo "     - DNS record should show gray cloud (⚙️), not orange (🔒)"
+echo "  3. Wait 5-10 minutes for DNS propagation"
+echo "  4. Clear DNS cache:"
+echo "     - Linux: sudo systemd-resolve --flush-caches"
+echo "     - Browser: Use incognito/private mode"
+echo "  5. Test domain directly: curl -v http://$DOMAIN/health"
+echo ""
+echo "General diagnostics:"
+echo "  1. Verify backend: sudo systemctl status $SERVICE_NAME"
 echo "  2. Check backend logs: sudo journalctl -u $SERVICE_NAME -n 50"
 echo "  3. Test backend directly: curl http://127.0.0.1:$APP_PORT/health"
-echo "  4. Test via nginx: curl http://127.0.0.1/health"
-echo "  5. Verify nginx config: sudo nginx -t"
-echo "  6. Check firewall: sudo ufw status"
+echo "  4. Test via nginx (IP): curl http://127.0.0.1/health"
+echo "  5. Test via nginx (domain): curl -H 'Host: $DOMAIN' http://127.0.0.1/health"
+echo "  6. Verify nginx config: sudo nginx -t"
+echo "  7. Check firewall: sudo ufw status"
+echo "  8. Check nginx access logs: sudo tail -f /var/log/nginx/access.log"
 echo ""
 echo "========================================"
