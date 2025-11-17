@@ -396,8 +396,10 @@ if is_enabled "$NGINX_ENABLE"; then
               
               # Check if it's a Cloudflare IP (common ranges)
               if echo "$DNS_RESULT" | grep -qE '^(104\.|172\.64\.|172\.65\.|172\.66\.|172\.67\.|172\.68\.|172\.69\.|172\.70\.|172\.71\.|198\.41\.|173\.245\.)'; then
-                echo "  ⚠️  WARNING: DNS still points to Cloudflare IPs (proxy is ON)" >&2
-                echo "     Turn OFF proxy in Cloudflare dashboard (gray cloud → orange cloud)" >&2
+                echo "  ✓ DNS points to Cloudflare IPs (proxy is ON)"
+                echo "  📝 IMPORTANT: Set Cloudflare SSL/TLS mode to 'Flexible'"
+                echo "     Dashboard → SSL/TLS → Overview → Set to 'Flexible'"
+                echo "     This allows Cloudflare to connect via HTTP (port 80)"
               elif [ "$DNS_RESULT" != "$VPS_IP" ] && [ "$VPS_IP" != "unknown" ]; then
                 echo "  ⚠️  WARNING: DNS ($DNS_RESULT) doesn't match VPS IP ($VPS_IP)" >&2
                 echo "     Update DNS A record to point to: $VPS_IP" >&2
@@ -409,16 +411,37 @@ if is_enabled "$NGINX_ENABLE"; then
             fi
           fi
           
-          # Test domain access
-          echo "  Testing domain access..."
+          # Test domain access (HTTP - for Cloudflare Flexible mode)
+          echo "  Testing domain access via HTTP..."
           DOMAIN_TEST=$(curl -s -m 5 -o /dev/null -w "%{http_code}" "http://$DOMAIN/health" 2>/dev/null || echo "000")
           if [ "$DOMAIN_TEST" = "200" ]; then
-            echo "  ✓ Domain is accessible via HTTP"
+            echo "  ✓ Domain is accessible via HTTP (Cloudflare Flexible mode ready)"
           elif [ "$DOMAIN_TEST" = "000" ]; then
-            echo "  ⚠️  Domain not reachable (connection failed)" >&2
-            echo "     This is normal if DNS hasn't propagated yet" >&2
+            echo "  ⚠️  Domain not reachable via HTTP" >&2
+            if echo "$DNS_RESULT" | grep -qE '^(104\.|172\.64\.|172\.65\.|172\.66\.|172\.67\.|172\.68\.|172\.69\.|172\.70\.|172\.71\.|198\.41\.|173\.245\.)'; then
+              echo "     Cloudflare proxy is ON - check SSL/TLS mode:" >&2
+              echo "     1. Go to Cloudflare Dashboard → SSL/TLS → Overview" >&2
+              echo "     2. Set mode to 'Flexible' (not 'Full' or 'Full Strict')" >&2
+              echo "     3. Wait 1-2 minutes for changes to propagate" >&2
+            else
+              echo "     This is normal if DNS hasn't propagated yet" >&2
+            fi
           else
             echo "  ⚠️  Domain returned HTTP $DOMAIN_TEST" >&2
+          fi
+          
+          # Test HTTPS access (should work if proxy is ON and Flexible mode)
+          if echo "$DNS_RESULT" | grep -qE '^(104\.|172\.64\.|172\.65\.|172\.66\.|172\.67\.|172\.68\.|172\.69\.|172\.70\.|172\.71\.|198\.41\.|173\.245\.)'; then
+            echo "  Testing HTTPS access (via Cloudflare)..."
+            HTTPS_TEST=$(curl -s -m 5 -o /dev/null -w "%{http_code}" "https://$DOMAIN/health" 2>/dev/null || echo "000")
+            if [ "$HTTPS_TEST" = "200" ]; then
+              echo "  ✓ HTTPS is working via Cloudflare proxy"
+            elif [ "$HTTPS_TEST" = "521" ]; then
+              echo "  ⚠️  Cloudflare 521 error detected" >&2
+              echo "     Fix: Set SSL/TLS mode to 'Flexible' in Cloudflare dashboard" >&2
+            else
+              echo "  ⚠️  HTTPS returned HTTP $HTTPS_TEST" >&2
+            fi
           fi
         fi
       fi
@@ -456,16 +479,22 @@ echo "  Check port:      ss -tln | grep $APP_PORT"
 echo ""
 echo "🔍 Troubleshooting Cloudflare 521:"
 echo ""
-echo "If you can access via VPS IP:80 but domain shows 521:"
+echo "If proxy is ON (orange cloud 🔒) and you get 521 error:"
+echo "  1. Go to Cloudflare Dashboard → SSL/TLS → Overview"
+echo "  2. Set SSL/TLS encryption mode to 'Flexible'"
+echo "     - Flexible: Cloudflare ↔ Visitors: HTTPS, Cloudflare ↔ Origin: HTTP"
+echo "     - Full/Full Strict: Requires HTTPS on origin (port 443) - will cause 521"
+echo "  3. Wait 1-2 minutes for changes to propagate"
+echo "  4. Test: curl https://$DOMAIN/health"
+echo ""
+echo "If proxy is OFF (gray cloud ⚙️) and domain doesn't work:"
 echo "  1. Check DNS resolution: dig +short $DOMAIN @8.8.8.8"
 echo "     - Should show your VPS IP (not Cloudflare IPs like 104.x.x.x)"
-echo "  2. Verify proxy is OFF in Cloudflare dashboard"
-echo "     - DNS record should show gray cloud (⚙️), not orange (🔒)"
-echo "  3. Wait 5-10 minutes for DNS propagation"
-echo "  4. Clear DNS cache:"
+echo "  2. Wait 5-10 minutes for DNS propagation"
+echo "  3. Clear DNS cache:"
 echo "     - Linux: sudo systemd-resolve --flush-caches"
 echo "     - Browser: Use incognito/private mode"
-echo "  5. Test domain directly: curl -v http://$DOMAIN/health"
+echo "  4. Test domain directly: curl -v http://$DOMAIN/health"
 echo ""
 echo "General diagnostics:"
 echo "  1. Verify backend: sudo systemctl status $SERVICE_NAME"
