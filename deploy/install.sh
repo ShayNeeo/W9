@@ -104,7 +104,7 @@ FRONTEND_DIST="$FRONTEND_DIR/dist"
 FRONTEND_PUBLIC="/var/www/w9"
 if [ -d "$FRONTEND_DIR" ]; then
   cd "$FRONTEND_DIR"
-  npm ci --prefer-offline || npm install
+  npm install --prefer-offline
   npm run build
   echo "Frontend built to $FRONTEND_DIST"
 else

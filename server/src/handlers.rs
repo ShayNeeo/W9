@@ -18,7 +18,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use askama::Template;
-use w9::templates::{IndexTemplate, ResultTemplate, ImageOgTemplate, FileInfoTemplate, AdminLoginTemplate, AdminHomeTemplate, AdminItemsTemplate, AdminItem};
+use w9::templates::{ImageOgTemplate, FileInfoTemplate, AdminLoginTemplate, AdminItem};
 use image::{imageops::FilterType, DynamicImage, ImageOutputFormat, GenericImageView};
 use sha2::{Digest, Sha256};
 use rand::{distributions::Alphanumeric, Rng};
@@ -292,8 +292,6 @@ pub async fn link_handler(State(state): State<AppState>, Form(req): Form<LinkReq
     (StatusCode::OK, body)
 }
 
-pub async fn index_handler() -> Html<String> { Html(IndexTemplate.render().unwrap_or_else(|_| "Template error".to_string())) }
-
 pub async fn submit_handler(State(state): State<AppState>, mut multipart: Multipart) -> axum::response::Response {
     let mut link_value: Option<String> = None;
     let mut file_bytes: Option<(String, Vec<u8>)> = None;
@@ -346,11 +344,11 @@ pub async fn submit_handler(State(state): State<AppState>, mut multipart: Multip
     (StatusCode::BAD_REQUEST, "Provide a URL or a file".to_string()).into_response()
 }
 
-pub async fn result_handler(State(state): State<AppState>, Path(code): Path<String>, Query(q): Query<std::collections::HashMap<String,String>>) -> Html<String> {
+pub async fn result_handler(State(state): State<AppState>, Path(code): Path<String>, Query(q): Query<std::collections::HashMap<String,String>>) -> (StatusCode, String) {
     let conn = Connection::open(&state.db_path).unwrap();
     let mut stmt = conn.prepare("SELECT kind, value FROM items WHERE code = ?1").unwrap();
     let row = stmt.query_row(params![code.clone()], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)));
-    let (_kind, _value) = match row { Ok(v) => v, Err(_) => return Html("<h1>Not found</h1>".to_string()) };
+    let (_kind, _value) = match row { Ok(v) => v, Err(_) => return (StatusCode::NOT_FOUND, r#"{"error":"Not found"}"#.to_string()) };
     let short_link = format!("{}/s/{}", state.base_url, code);
     let qr_svg = if q.get("qr").map(|v| v=="1").unwrap_or(false) {
         let qr_target = ensure_absolute(&state.base_url, &short_link);
@@ -364,8 +362,13 @@ pub async fn result_handler(State(state): State<AppState>, Path(code): Path<Stri
                 .build())
             .unwrap_or_default()
     } else { String::new() };
-    let tpl = ResultTemplate { code, short_link, qr_svg: if qr_svg.is_empty() { None } else { Some(qr_svg) } };
-    Html(tpl.render().unwrap_or_else(|_| "Template error".to_string()))
+    let body = format!(
+        r#"{{"code":"{}","short_link":"{}","qr_svg":"{}"}}"#,
+        code,
+        short_link,
+        qr_svg.replace('"', "\\\"")
+    );
+    (StatusCode::OK, body)
 }
 
 pub async fn short_handler(State(state): State<AppState>, Path(code): Path<String>, headers: HeaderMap) -> axum::response::Response {
@@ -479,10 +482,6 @@ async fn require_admin_token(db_path: &str, token_opt: Option<&str>) -> bool {
     false
 }
 
-pub async fn admin_login_get() -> Html<String> {
-    Html(AdminLoginTemplate.render().unwrap_or_else(|_| "Template error".to_string()))
-}
-
 #[derive(Deserialize)]
 pub struct AdminLoginForm { pub username: String, pub password: String }
 
@@ -520,32 +519,26 @@ pub async fn admin_logout(State(state): State<AppState>, cookie: Option<TypedHea
 }
 
 #[debug_handler]
-pub async fn admin_home(State(state): State<AppState>, cookie: Option<TypedHeader<Cookie>>) -> Response {
+pub async fn admin_items(State(state): State<AppState>, cookie: Option<TypedHeader<Cookie>>) -> (StatusCode, String) {
     if !require_admin_token(&state.db_path, extract_admin_token(cookie).as_deref()).await {
-        return Redirect::to("/admin/login").into_response();
-    }
-    Html(AdminHomeTemplate.render().unwrap_or_else(|_| "Template error".to_string())).into_response()
-}
-
-#[debug_handler]
-pub async fn admin_items(State(state): State<AppState>, cookie: Option<TypedHeader<Cookie>>) -> Response {
-    if !require_admin_token(&state.db_path, extract_admin_token(cookie).as_deref()).await {
-        return Redirect::to("/admin/login").into_response();
+        return (StatusCode::UNAUTHORIZED, r#"{"error":"Unauthorized"}"#.to_string());
     }
     let conn = Connection::open(&state.db_path).unwrap();
     let mut stmt = conn.prepare("SELECT code, kind, value, created_at FROM items ORDER BY created_at DESC LIMIT 500").unwrap();
     let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?))).unwrap();
-    let mut items: Vec<AdminItem> = Vec::new();
+    let mut items: Vec<serde_json::Value> = Vec::new();
     for row in rows {
         if let Ok((code, kind, value, created_at)) = row {
-            let mime = if kind == "file" {
-                value.strip_prefix("file:")
-                    .map(|fname| mime_from_path(fname).first_or_octet_stream().to_string())
-            } else { None };
-            items.push(AdminItem { code, kind, value, created_at, mime });
+            items.push(serde_json::json!({
+                "code": code,
+                "kind": kind,
+                "value": value,
+                "created_at": created_at
+            }));
         }
     }
-    Html(AdminItemsTemplate { items }.render().unwrap_or_else(|_| "Template error".to_string())).into_response()
+    let body = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
+    (StatusCode::OK, body)
 }
 
 // THIS IS THE RESTORED AND CORRECTED FUNCTION
