@@ -15,10 +15,29 @@ BASE_URL=${BASE_URL:-https://$DOMAIN}
 FRONTEND_PUBLIC=/var/www/w9
 
 # Stop service and kill any stuck processes
+echo "Stopping w9 service..."
 sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
+sleep 2
+
+# Kill any processes using port 10105
+echo "Killing processes on port $APP_PORT..."
+sudo fuser -k $APP_PORT/tcp 2>/dev/null || true
 sleep 1
+
+# Kill any w9 binary processes
+echo "Killing any remaining w9 processes..."
+sudo pkill -9 -f "/opt/w9/w9" 2>/dev/null || true
 sudo pkill -9 w9 2>/dev/null || true
-sleep 1
+sudo killall -9 w9 2>/dev/null || true
+sleep 2
+
+# Verify port is free
+if sudo ss -tulpn | grep -q ":$APP_PORT "; then
+    echo "ERROR: Port $APP_PORT is still in use!"
+    sudo ss -tulpn | grep ":$APP_PORT"
+    exit 1
+fi
+echo "Port $APP_PORT is free"
 
 # Build user
 BUILD_USER="${SUDO_USER:-$(whoami)}"
