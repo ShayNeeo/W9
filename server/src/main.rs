@@ -110,11 +110,11 @@ async fn main() -> anyhow::Result<()> {
         // Short link redirects
         .route("/r/:code", get(handlers::result_handler))
         .route("/s/:code", get(handlers::short_handler))
-        // Admin JSON API endpoints (frontend handles UI)
-        .route("/admin/login", post(handlers::admin_login_post))
-        .route("/admin/logout", post(handlers::admin_logout))
-        .route("/admin/items", get(handlers::admin_items))
-        .route("/admin/items/:code/delete", post(handlers::admin_delete_item))
+        // Admin JSON API endpoints (frontend handles UI at /admin)
+        .route("/api/admin/login", post(handlers::admin_login_post))
+        .route("/api/admin/logout", post(handlers::admin_logout))
+        .route("/api/admin/items", get(handlers::admin_items))
+        .route("/api/admin/items/:code/delete", post(handlers::admin_delete_item))
         .with_state(app_state)
         // Set individual field limit to 1 GiB for multipart uploads
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))

@@ -1,0 +1,8 @@
+Disallow: /api/
+Disallow: /files/
+Disallow: /admin
+Disallow: /admin/login
+Allow: /
+
+Sitemap: https://w9.se/sitemap.xml
+

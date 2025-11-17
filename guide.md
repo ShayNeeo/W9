@@ -7,4 +7,4 @@
 
 
 Today tasks:
-Let frontend handles all the interface (login logout). Backend authenticate or management through api calling only (delete old /admin/items or /admin/login).
+Let frontend handles all the interface (login logout); /admin show items list to delete; must authenticated; if not redirect to login. Backend authenticate or management through api calling only (delete old /admin/items or /admin/login).

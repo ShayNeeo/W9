@@ -1,6 +1,10 @@
 import { useState, useRef, FormEvent, useEffect } from 'react'
 
 const API_BASE: string = import.meta.env?.VITE_API_BASE_URL || ''
+const adminApi = (path: string) => {
+  const suffix = path.startsWith('/') ? path : `/${path}`
+  return joinUrl(API_BASE, `/api/admin${suffix}`)
+}
 
 type SuccessResult = {
   success: true
@@ -37,7 +41,7 @@ function AdminLogin() {
       const form = new FormData()
       form.append('username', username)
       form.append('password', password)
-      const resp = await fetch(joinUrl(API_BASE, '/admin/login'), {
+      const resp = await fetch(adminApi('/login'), {
         method: 'POST',
         body: form,
         credentials: 'include'
@@ -102,7 +106,7 @@ function AdminPanel() {
 
   const handleLogout = async () => {
     try {
-      const resp = await fetch(joinUrl(API_BASE, '/admin/logout'), { 
+      const resp = await fetch(adminApi('/logout'), { 
         method: 'POST', 
         credentials: 'include' 
       })
@@ -118,7 +122,7 @@ function AdminPanel() {
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const resp = await fetch(joinUrl(API_BASE, '/admin/items'), { credentials: 'include' })
+        const resp = await fetch(adminApi('/items'), { credentials: 'include' })
         console.log('admin/items response status:', resp.status)
         console.log('admin/items response headers:', resp.headers.get('content-type'))
         
@@ -187,12 +191,21 @@ function AdminPanel() {
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.kind}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                      <button onClick={async () => {
-                        const resp = await fetch(joinUrl(API_BASE, `/admin/items/${item.code}/delete`), { method: 'POST', credentials: 'include' })
-                        if (resp.ok) {
-                          setItems(items.filter((i: any) => i.code !== item.code))
-                        }
-                      }} className="button" style={{ fontSize: '12px' }}>Delete</button>
+                      <button
+                        onClick={async () => {
+                          const resp = await fetch(adminApi(`/items/${item.code}/delete`), {
+                            method: 'POST',
+                            credentials: 'include'
+                          })
+                          if (resp.ok) {
+                            setItems(items.filter((i: any) => i.code !== item.code))
+                          }
+                        }}
+                        className="button"
+                        style={{ fontSize: '12px' }}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))
