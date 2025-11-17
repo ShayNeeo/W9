@@ -309,7 +309,16 @@ fi
 if is_enabled "$SYSTEMD_ENABLE"; then
   echo "Starting (or restarting) $SERVICE_NAME service"
   sudo systemctl restart "$SERVICE_NAME" || sudo systemctl start "$SERVICE_NAME"
-  sleep 2
+  
+  # Wait for service to start
+  echo "Waiting for service to start..."
+  for i in {1..10}; do
+    if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+      break
+    fi
+    sleep 1
+  done
+  
   if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
     echo "✓ Service is running"
     # Verify the service is listening on the expected port
@@ -320,10 +329,25 @@ if is_enabled "$SYSTEMD_ENABLE"; then
         echo "WARNING: Service may not be listening on port $APP_PORT" >&2
       fi
     fi
+    
+    # Health check - verify backend actually responds
+    echo "Verifying backend health..."
+    sleep 1
+    if command -v curl >/dev/null 2>&1; then
+      HEALTH_RESPONSE=$(curl -s -f -m 3 "http://127.0.0.1:$APP_PORT/health" 2>/dev/null || echo "")
+      if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
+        echo "✓ Backend health check passed"
+      else
+        echo "WARNING: Backend health check failed (may still be starting)" >&2
+        echo "  Response: ${HEALTH_RESPONSE:-no response}" >&2
+        echo "  Check logs: sudo journalctl -u $SERVICE_NAME -n 50" >&2
+      fi
+    fi
   else
     echo "ERROR: Service failed to start" >&2
     sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
     echo "Check logs with: sudo journalctl -u $SERVICE_NAME -n 50" >&2
+    exit 1
   fi
   sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
 fi
@@ -333,12 +357,28 @@ if is_enabled "$NGINX_ENABLE"; then
   if command -v nginx >/dev/null 2>&1; then
     sudo systemctl enable nginx || true
     sudo systemctl reload nginx || sudo systemctl restart nginx || true
-    sleep 1
+    sleep 2
+    
     if ! sudo systemctl is-active --quiet nginx; then
-      echo "WARNING: nginx is not running after reload/restart" >&2
+      echo "ERROR: nginx failed to start" >&2
       sudo systemctl status nginx --no-pager -l || true
+      exit 1
     else
       echo "✓ Nginx is running"
+      
+      # Verify nginx can reach backend
+      if command -v curl >/dev/null 2>&1; then
+        echo "Verifying nginx → backend connectivity..."
+        NGINX_HEALTH=$(curl -s -f -m 3 "http://127.0.0.1/health" 2>/dev/null || echo "")
+        if echo "$NGINX_HEALTH" | grep -q "healthy"; then
+          echo "✓ Nginx can reach backend successfully"
+        else
+          echo "WARNING: Nginx health check failed" >&2
+          echo "  Response: ${NGINX_HEALTH:-no response}" >&2
+          echo "  This may cause Cloudflare 521 errors" >&2
+          echo "  Check nginx logs: sudo journalctl -u nginx -n 50" >&2
+        fi
+      fi
     fi
   fi
 fi
@@ -363,5 +403,20 @@ echo "  /r/:code       → Redirect"
 echo "  /s/:code       → Short link"
 echo "  /files/*       → Uploads"
 echo ""
-echo "View logs: sudo journalctl -u $SERVICE_NAME -f"
+echo "📊 Diagnostic Commands:"
+echo "  Service status:  sudo systemctl status $SERVICE_NAME"
+echo "  Service logs:    sudo journalctl -u $SERVICE_NAME -f"
+echo "  Nginx logs:      sudo journalctl -u nginx -f"
+echo "  Backend health:  curl http://127.0.0.1:$APP_PORT/health"
+echo "  Via nginx:       curl http://127.0.0.1/health"
+echo "  Check port:      ss -tln | grep $APP_PORT"
+echo ""
+echo "🔍 Troubleshooting Cloudflare 521:"
+echo "  1. Verify backend is running: sudo systemctl status $SERVICE_NAME"
+echo "  2. Check backend logs: sudo journalctl -u $SERVICE_NAME -n 50"
+echo "  3. Test backend directly: curl http://127.0.0.1:$APP_PORT/health"
+echo "  4. Test via nginx: curl http://127.0.0.1/health"
+echo "  5. Verify nginx config: sudo nginx -t"
+echo "  6. Check firewall: sudo ufw status"
+echo ""
 echo "========================================"
