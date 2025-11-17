@@ -114,11 +114,10 @@ function AdminPanel() {
           window.location.href = '/admin/login'
           return
         }
+        const text = await resp.text()
         if (!resp.ok) {
-          const text = await resp.text()
           throw new Error(`HTTP ${resp.status}: ${text}`)
         }
-        const text = await resp.text()
         if (!text) {
           setItems([])
           setLoading(false)
