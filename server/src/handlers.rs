@@ -18,7 +18,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use askama::Template;
-use ping0::templates::{IndexTemplate, ResultTemplate, ImageOgTemplate, FileInfoTemplate, AdminLoginTemplate, AdminHomeTemplate, AdminItemsTemplate, AdminItem};
+use w9::templates::{IndexTemplate, ResultTemplate, ImageOgTemplate, FileInfoTemplate, AdminLoginTemplate, AdminHomeTemplate, AdminItemsTemplate, AdminItem};
 use image::{imageops::FilterType, DynamicImage, ImageOutputFormat, GenericImageView};
 use sha2::{Digest, Sha256};
 use rand::{distributions::Alphanumeric, Rng};
@@ -33,7 +33,7 @@ pub async fn cors_preflight() -> impl IntoResponse {
 fn extract_admin_token(cookie: Option<TypedHeader<Cookie>>) -> Option<String> {
     cookie
         .as_ref()
-        .and_then(|TypedHeader(c)| c.get("ping0_admin"))
+        .and_then(|TypedHeader(c)| c.get("w9_admin"))
         .map(|value| value.to_string())
 }
 
@@ -503,7 +503,7 @@ pub async fn admin_login_post(State(state): State<AppState>, Form(f): Form<Admin
     let token = generate_token(48);
     let _ = conn.execute("INSERT INTO sessions (token, created_at) VALUES (?1, strftime('%s','now'))", params![token.clone()]);
     let mut headers = HeaderMap::new();
-    let cookie = format!("ping0_admin={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000", token);
+    let cookie = format!("w9_admin={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000", token);
     headers.insert(axum::http::header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
     (headers, Redirect::to("/admin")).into_response()
 }
@@ -515,7 +515,7 @@ pub async fn admin_logout(State(state): State<AppState>, cookie: Option<TypedHea
         }
     }
     let mut headers = HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, HeaderValue::from_static("ping0_admin=; Max-Age=0; Path=/"));
+    headers.insert(axum::http::header::SET_COOKIE, HeaderValue::from_static("w9_admin=; Max-Age=0; Path=/"));
     (headers, Redirect::to("/admin/login")).into_response()
 }
 

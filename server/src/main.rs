@@ -17,7 +17,7 @@ mod handlers;
 async fn health_check() -> Json<serde_json::Value> {
     Json(json!({
         "status": "healthy",
-        "service": "ping0"
+        "service": "w9"
     }))
 }
 
@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Base URL: {}", base_url);
 
     // Initialize SQLite (file-based)
-    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "data/ping0.db".to_string());
+    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "data/w9.db".to_string());
     std::fs::create_dir_all("data").ok();
     let conn = Connection::open(&db_path)?;
     conn.execute_batch(

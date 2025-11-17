@@ -90,7 +90,7 @@ pub fn App(cx: Scope) -> impl IntoView {
 
     view! { cx,
         <div>
-            <h1>"ping0 - Fast Upload & Share"</h1>
+            <h1>"w9 - Fast Upload & Share"</h1>
             {upload_form}
             {link_form}
         </div>

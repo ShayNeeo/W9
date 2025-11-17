@@ -7,7 +7,7 @@ use askama::Template;
 <html>
   <head>
     <meta charset="utf-8">
-    <title>ping0</title>
+    <title>w9</title>
     <style>
       body{font-family:Courier New,monospace;background:#fff;color:#000}
       main{max-width:560px;margin:4rem auto;text-align:center}
@@ -16,7 +16,7 @@ use askama::Template;
   </head>
   <body>
     <main>
-      <h1>ping0</h1>
+      <h1>w9</h1>
       <form action="/submit" method="post" enctype="multipart/form-data">
         <label>URL:
           <input type="text" name="link">
@@ -39,7 +39,7 @@ pub struct IndexTemplate;
 <html>
   <head>
     <meta charset="utf-8">
-    <title>ping0 result</title>
+    <title>w9 result</title>
     <style>
       body{font-family:Courier New,monospace;background:#fff;color:#000}
       main{max-width:560px;margin:4rem auto;text-align:center}

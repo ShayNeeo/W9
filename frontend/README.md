@@ -1,6 +1,6 @@
-# ping0 Frontend (React + TypeScript + Vite)
+# w9 Frontend (React + TypeScript + Vite)
 
-Single-page app for `ping0`, styled with a minimal monochrome folder vibe.
+Single-page app for `w9`, styled with a minimal monochrome folder vibe.
 
 ## 1) Local Development
 

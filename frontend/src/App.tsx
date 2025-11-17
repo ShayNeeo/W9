@@ -104,7 +104,7 @@ export default function App() {
   return (
     <div className="app">
       <main className="container">
-        <h1>ping0</h1>
+        <h1>w9</h1>
         <p className="subtitle">Share a link or upload a file · get a short URL</p>
 
         <form onSubmit={handleSubmit} className="form">

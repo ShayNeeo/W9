@@ -1,11 +1,11 @@
-# ping0 — Simple Link & File Sharer
+# w9 — Simple Link & File Sharer
 
 [![Rust](https://img.shields.io/badge/rust-1.75+-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**ping0** is a minimal, fast link and file sharing web application built entirely in Rust. Paste a URL or upload a file, and get a short link instantly. Perfect for quickly sharing content without accounts or complex setups.
+**w9** is a minimal, fast link and file sharing web application built entirely in Rust. Paste a URL or upload a file, and get a short link instantly. Perfect for quickly sharing content without accounts or complex setups.
 
-![ping0 Screenshot](https://via.placeholder.com/800x400/000000/FFFFFF?text=ping0+Screenshoot)
+![w9 Screenshot](https://via.placeholder.com/800x400/000000/FFFFFF?text=w9+Screenshoot)
 
 ## ✨ Features
 
@@ -23,20 +23,20 @@
 
 ```bash
 docker run -d \
-  --name ping0 \
+  --name w9 \
   -p 8080:8080 \
   -v ./data:/app/data \
   -v ./uploads:/app/uploads \
   -e BASE_URL=https://your-domain.com \
-  ghcr.io/shayneeo/ping0:latest
+  ghcr.io/shayneeo/w9:latest
 ```
 
 ### Option 2: Binary Release
 
-Download the latest release from the [releases page](https://github.com/ShayNeeo/ping0/releases) and run:
+Download the latest release from the [releases page](https://github.com/ShayNeeo/W9/releases) and run:
 
 ```bash
-./ping0
+./w9
 ```
 
 Then open http://localhost:8080
@@ -44,10 +44,10 @@ Then open http://localhost:8080
 ### Option 3: From Source
 
 ```bash
-git clone https://github.com/ShayNeeo/ping0.git
-cd ping0
+git clone https://github.com/ShayNeeo/W9.git
+cd w9
 cargo build --release
-./target/release/ping0
+./target/release/w9
 ```
 
 ## 📖 Usage
@@ -79,7 +79,7 @@ Set these environment variables:
 | `HOST` | `0.0.0.0` | Listen address |
 | `PORT` | `8080` | Listen port |
 | `BASE_URL` | `http://localhost:8080` | Public base URL |
-| `DATABASE_PATH` | `data/ping0.db` | SQLite database path |
+| `DATABASE_PATH` | `data/w9.db` | SQLite database path |
 
 ## 🌟 Use Cases
 
@@ -111,4 +111,4 @@ This project is licensed under the GNUv3 License - see the [LICENSE](LICENSE) fi
 
 ---
 
-**Made with ❤️ in Rust** • [Report Issues](https://github.com/ShayNeeo/ping0/issues) • [View Demo](https://w9.se)
+**Made with ❤️ in Rust** • [Report Issues](https://github.com/ShayNeeo/W9/issues) • [View Demo](https://w9.se)

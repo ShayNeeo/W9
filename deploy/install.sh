@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Idempotent installer for ping0. It will:
+# Idempotent installer for w9. It will:
 # - Install required packages (Debian/Ubuntu)
 # - Create system user and runtime dirs
 # - Ensure Rust toolchain for the repo owner
 # - Build release binary
-# - Install to /opt/ping0/ping0
+# - Install to /opt/w9/w9
 # - Write systemd unit and enable service
 # - Optionally configure nginx and Cloudflare Origin certs
 # Usage: sudo ./deploy/install.sh
@@ -15,10 +15,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Repo root: $ROOT_DIR"
 
 # Configuration (override via environment variables)
-SERVICE_NAME=${SERVICE_NAME:-ping0}
-BIN_NAME=${BIN_NAME:-ping0}
-INSTALL_DIR=${INSTALL_DIR:-/opt/ping0}
-SERVICE_USER=${SERVICE_USER:-ping0}
+SERVICE_NAME=${SERVICE_NAME:-w9}
+BIN_NAME=${BIN_NAME:-w9}
+INSTALL_DIR=${INSTALL_DIR:-/opt/w9}
+SERVICE_USER=${SERVICE_USER:-w9}
 SERVICE_GROUP=${SERVICE_GROUP:-$SERVICE_USER}
 DATA_DIR=${DATA_DIR:-$INSTALL_DIR/data}
 UPLOADS_DIR=${UPLOADS_DIR:-$INSTALL_DIR/uploads}
@@ -226,7 +226,7 @@ write_env_file() {
 HOST=0.0.0.0
 PORT=$APP_PORT
 BASE_URL=$BASE_URL
-DATABASE_PATH=$DATA_DIR/ping0.db
+DATABASE_PATH=$DATA_DIR/w9.db
 ENVV
 }
 
@@ -246,7 +246,7 @@ if is_enabled "$SYSTEMD_ENABLE"; then
   echo "Writing systemd unit $SYSTEMD_UNIT"
   sudo tee "$SYSTEMD_UNIT" > /dev/null <<UNIT
 [Unit]
-Description=$SERVICE_NAME - Rust link & file sharer
+Description=w9 - Link & file sharer service
 After=network.target
 
 [Service]
