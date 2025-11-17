@@ -242,15 +242,15 @@ pub async fn short_handler(State(state): State<AppState>, Path(code): Path<Strin
                         // For SVG use the original (usually tiny)
                         image_url_full.clone()
                     };
-                    // Content negotiation: if the client wants HTML, return the OG preview page;
-                    // otherwise (e.g., Markdown image fetch), redirect to the raw image.
+                    // Content negotiation: return HTML by default (for browsers)
+                    // Only return raw image if explicitly requesting non-HTML (e.g., for embeds)
                     let accept = headers
                         .get(axum::http::header::ACCEPT)
                         .and_then(|v| v.to_str().ok())
-                        .unwrap_or("")
+                        .unwrap_or("*/*")
                         .to_ascii_lowercase();
-                    let wants_html = accept.contains("text/html");
-                    if !wants_html {
+                    let wants_raw_image = accept.contains("image/") && !accept.contains("text/html");
+                    if wants_raw_image {
                         // For non-HTML (e.g., direct image fetch), stream the file instead of redirecting to avoid user-agent caching/transform issues
                         let fs_path = StdPath::new(&state.uploads_dir).join(filename);
                         if let Ok(bytes) = std::fs::read(&fs_path) {
