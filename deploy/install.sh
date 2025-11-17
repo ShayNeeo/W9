@@ -18,30 +18,26 @@ DOMAIN=${DOMAIN:-w9.se}
 BASE_URL=${BASE_URL:-https://$DOMAIN}
 FRONTEND_PUBLIC=/var/www/w9
 
-# Stop service and kill any stuck processes
-echo "Stopping w9 service..."
-sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
-sleep 2
+# Backup for rollback
+BACKUP_DIR=/tmp/w9_backup_$$
+NEED_ROLLBACK=false
 
-# Kill any processes using port 10105
-echo "Killing processes on port $APP_PORT..."
-sudo fuser -k $APP_PORT/tcp 2>/dev/null || true
-sleep 1
-
-# Kill any w9 binary processes
-echo "Killing any remaining w9 processes..."
-sudo pkill -9 -f "/opt/w9/w9" 2>/dev/null || true
-sudo pkill -9 w9 2>/dev/null || true
-sudo killall -9 w9 2>/dev/null || true
-sleep 2
-
-# Verify port is free
-if sudo ss -tulpn | grep -q ":$APP_PORT "; then
-    echo "ERROR: Port $APP_PORT is still in use!"
-    sudo ss -tulpn | grep ":$APP_PORT"
-    exit 1
-fi
-echo "Port $APP_PORT is free"
+cleanup() {
+    if [ "$NEED_ROLLBACK" = "true" ]; then
+        echo "ERROR: Deployment failed, rolling back..."
+        if [ -f "$BACKUP_DIR/w9" ]; then
+            sudo cp "$BACKUP_DIR/w9" "$INSTALL_DIR/w9" 2>/dev/null || true
+        fi
+        if [ -d "$BACKUP_DIR/frontend" ]; then
+            sudo rm -rf "$FRONTEND_PUBLIC"
+            sudo cp -r "$BACKUP_DIR/frontend" "$FRONTEND_PUBLIC" 2>/dev/null || true
+        fi
+        sudo systemctl start $SERVICE_NAME 2>/dev/null || true
+        echo "Rollback attempted"
+    fi
+    rm -rf "$BACKUP_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # Build user
 BUILD_USER="${SUDO_USER:-$(whoami)}"
@@ -49,26 +45,90 @@ BUILD_USER="${SUDO_USER:-$(whoami)}"
 
 # Install packages (only if needed)
 echo "Checking packages..."
-sudo apt-get update -qq >/dev/null 2>&1 || true
-sudo apt-get install -y build-essential pkg-config libsqlite3-dev sqlite3 nodejs npm nginx ufw openssl >/dev/null 2>&1 || true
+REQUIRED_PKGS="build-essential pkg-config libsqlite3-dev sqlite3 nodejs npm nginx ufw openssl"
+MISSING_PKGS=""
+for pkg in $REQUIRED_PKGS; do
+    if ! dpkg -l | grep -q "^ii  $pkg"; then
+        MISSING_PKGS="$MISSING_PKGS $pkg"
+    fi
+done
+if [ -n "$MISSING_PKGS" ]; then
+    echo "Installing missing packages:$MISSING_PKGS"
+    sudo apt-get update -qq >/dev/null 2>&1 || true
+    sudo apt-get install -y $MISSING_PKGS >/dev/null 2>&1 || true
+fi
 echo "✓ Packages ready"
 
 # Create service user
 id -u $SERVICE_USER >/dev/null 2>&1 || sudo useradd --system --create-home --home-dir $INSTALL_DIR --shell /usr/sbin/nologin $SERVICE_USER
 
-# Build backend
-echo "Building backend..."
-if [ "$BUILD_USER" != "root" ]; then
-  sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && cargo build --release" 2>&1 | tail -2
-else
-  bash -lc "cd '$ROOT_DIR' && cargo build --release" 2>&1 | tail -2
+# Check if rebuild is needed
+BACKEND_NEEDS_BUILD=true
+FRONTEND_NEEDS_BUILD=true
+
+if [ -f "$ROOT_DIR/target/release/w9" ]; then
+    BINARY_TIME=$(stat -c %Y "$ROOT_DIR/target/release/w9" 2>/dev/null || echo 0)
+    NEWEST_SRC=$(find "$ROOT_DIR/server" "$ROOT_DIR/Cargo.toml" -type f -name "*.rs" -o -name "Cargo.toml" 2>/dev/null | xargs stat -c %Y 2>/dev/null | sort -n | tail -1)
+    [ "$NEWEST_SRC" -lt "$BINARY_TIME" ] && BACKEND_NEEDS_BUILD=false
 fi
 
-# Build frontend
-echo "Building frontend..."
-cd "$ROOT_DIR/frontend"
-npm install --silent 2>&1 | tail -1
-npm run build 2>&1 | tail -1
+if [ -d "$ROOT_DIR/frontend/dist" ]; then
+    DIST_TIME=$(stat -c %Y "$ROOT_DIR/frontend/dist" 2>/dev/null || echo 0)
+    NEWEST_FE=$(find "$ROOT_DIR/frontend/src" "$ROOT_DIR/frontend/index.html" -type f 2>/dev/null | xargs stat -c %Y 2>/dev/null | sort -n | tail -1)
+    [ "$NEWEST_FE" -lt "$DIST_TIME" ] && FRONTEND_NEEDS_BUILD=false
+fi
+
+# Build backend (if needed)
+if [ "$BACKEND_NEEDS_BUILD" = "true" ]; then
+    echo "Building backend..."
+    if [ "$BUILD_USER" != "root" ]; then
+        sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && cargo build --release" 2>&1 | tail -2
+    else
+        bash -lc "cd '$ROOT_DIR' && cargo build --release" 2>&1 | tail -2
+    fi
+else
+    echo "✓ Backend is up to date, skipping rebuild"
+fi
+
+# Build frontend (if needed)
+if [ "$FRONTEND_NEEDS_BUILD" = "true" ]; then
+    echo "Building frontend..."
+    cd "$ROOT_DIR/frontend"
+    # Use npm ci if package-lock.json exists for faster, reproducible installs
+    if [ -f "package-lock.json" ]; then
+        npm ci --prefer-offline --no-audit 2>&1 | tail -1
+    else
+        npm install --prefer-offline --no-audit 2>&1 | tail -1
+    fi
+    npm run build 2>&1 | tail -1
+else
+    echo "✓ Frontend is up to date, skipping rebuild"
+fi
+
+# Stop service before deployment
+echo "Stopping w9 service..."
+sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
+sleep 1
+
+# Kill any processes using the port
+sudo fuser -k $APP_PORT/tcp 2>/dev/null || true
+sleep 1
+
+# Verify port is free
+if sudo ss -tulpn | grep -q ":$APP_PORT "; then
+    echo "WARNING: Port $APP_PORT still in use, forcing cleanup..."
+    sudo pkill -9 w9 2>/dev/null || true
+    sleep 1
+fi
+
+# Enable rollback on failure from this point
+NEED_ROLLBACK=true
+
+# Backup existing installation
+echo "Creating backup..."
+mkdir -p "$BACKUP_DIR"
+[ -f "$INSTALL_DIR/w9" ] && cp "$INSTALL_DIR/w9" "$BACKUP_DIR/w9" 2>/dev/null || true
+[ -d "$FRONTEND_PUBLIC" ] && cp -r "$FRONTEND_PUBLIC" "$BACKUP_DIR/frontend" 2>/dev/null || true
 
 # Install binary
 echo "Installing binary..."
@@ -196,14 +256,41 @@ sudo ln -sf /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/$S
 # Start services
 echo "Starting services..."
 sudo systemctl daemon-reload
-sudo systemctl enable $SERVICE_NAME nginx
-sudo systemctl restart $SERVICE_NAME nginx
+sudo systemctl enable $SERVICE_NAME nginx 2>&1 | grep -v "Created symlink" || true
+
+# Reload nginx config (faster than restart if already running)
+if sudo systemctl is-active --quiet nginx; then
+    sudo nginx -t && sudo systemctl reload nginx || sudo systemctl restart nginx
+else
+    sudo systemctl start nginx
+fi
+
+# Start w9 service
+sudo systemctl start $SERVICE_NAME
+
+# Enable firewall rules
 sudo ufw allow 80/tcp 443/tcp 2>/dev/null || true
 
 # Verify deployment
 echo ""
 echo "=== VERIFICATION ==="
-sleep 2
+
+# Wait for service to start with timeout
+echo -n "Waiting for service to start"
+for i in {1..15}; do
+    sleep 1
+    echo -n "."
+    if sudo systemctl is-active --quiet $SERVICE_NAME; then
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo ""
+        echo "✗ Service failed to start"
+        sudo journalctl -u $SERVICE_NAME --no-pager -n 20
+        exit 1
+    fi
+done
+echo ""
 
 # Check services
 for service in $SERVICE_NAME nginx; do
@@ -211,20 +298,36 @@ for service in $SERVICE_NAME nginx; do
         echo "✓ $service running"
     else
         echo "✗ $service FAILED"
+        sudo journalctl -u $service --no-pager -n 10
         exit 1
     fi
 done
 
-# Check backend
-if curl -sf http://127.0.0.1:$APP_PORT/health >/dev/null; then
-    echo "✓ Backend healthy"
-else
-    echo "✗ Backend unhealthy"
-    exit 1
-fi
+# Check backend health with retries
+echo -n "Checking backend health"
+for i in {1..10}; do
+    sleep 1
+    echo -n "."
+    if curl -sf http://127.0.0.1:$APP_PORT/health >/dev/null 2>&1; then
+        echo ""
+        echo "✓ Backend healthy"
+        NEED_ROLLBACK=false
+        break
+    fi
+    if [ $i -eq 10 ]; then
+        echo ""
+        echo "✗ Backend unhealthy"
+        sudo journalctl -u $SERVICE_NAME --no-pager -n 20
+        exit 1
+    fi
+done
 
 echo ""
-echo "✓ Deploy successful!"
-echo "Domain: $DOMAIN"
-echo "Status: sudo systemctl status $SERVICE_NAME"
-echo "Logs: sudo journalctl -u $SERVICE_NAME -f"
+echo "========================================="
+echo "✓ Deployment successful!"
+echo "========================================="
+echo "Domain:  $DOMAIN"
+echo "Status:  sudo systemctl status $SERVICE_NAME"
+echo "Logs:    sudo journalctl -u $SERVICE_NAME -f"
+echo "Restart: sudo systemctl restart $SERVICE_NAME"
+echo "========================================="

@@ -106,6 +106,7 @@ function AdminPanel() {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deletingCode, setDeletingCode] = useState<string | null>(null)
 
   const handleLogout = async () => {
     try {
@@ -119,6 +120,30 @@ function AdminPanel() {
     } catch (err) {
       console.error('Logout error:', err)
       window.location.href = '/'
+    }
+  }
+
+  const handleDelete = async (code: string) => {
+    if (!confirm(`Delete item ${code}?`)) return
+    setDeletingCode(code)
+    try {
+      const resp = await fetch(adminApi(`/items/${code}`), {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (resp.status === 401) {
+        window.location.href = '/admin/login'
+        return
+      }
+      if (resp.ok) {
+        setItems(items.filter((i: any) => i.code !== code))
+      } else {
+        throw new Error(`Failed to delete: HTTP ${resp.status}`)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Delete failed')
+    } finally {
+      setDeletingCode(null)
     }
   }
 
@@ -175,19 +200,12 @@ function AdminPanel() {
                     <td style={{ border: '1px solid #ddd', padding: '8px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>
                       <button
-                        onClick={async () => {
-                          const resp = await fetch(adminApi(`/items/${item.code}`), {
-                            method: 'POST',
-                            credentials: 'include'
-                          })
-                          if (resp.ok) {
-                            setItems(items.filter((i: any) => i.code !== item.code))
-                          }
-                        }}
+                        onClick={() => handleDelete(item.code)}
                         className="button"
                         style={{ fontSize: '12px' }}
+                        disabled={deletingCode === item.code}
                       >
-                        Delete
+                        {deletingCode === item.code ? 'Deleting...' : 'Delete'}
                       </button>
                     </td>
                   </tr>
@@ -219,8 +237,18 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [fileInfo, setFileInfo] = useState<{ name: string; type: string; sizeKB: number } | null>(null)
+  const [copySuccess, setCopySuccess] = useState(false)
 
   const fileRef = useRef<HTMLInputElement | null>(null)
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview)
+      }
+    }
+  }, [imagePreview])
 
   function handleUrlChange(v: string) {
     setUrlInput(v)
@@ -232,6 +260,11 @@ export default function App() {
   }
 
   function handleFileChange(file: File | null) {
+    // Clean up previous preview URL to prevent memory leak
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview)
+    }
+    
     setFileInput(file)
     if (file) {
       // Clear URL if a file is chosen
@@ -239,11 +272,14 @@ export default function App() {
       if (file.type.startsWith('image/')) {
         const url = URL.createObjectURL(file)
         setImagePreview(url)
-        setFileInfo({ name: file.name, type: file.type || guessMimeFromName(file.name), sizeKB: Math.round(file.size / 102.4) / 10 })
+        setFileInfo({ name: file.name, type: file.type || guessMimeFromName(file.name), sizeKB: Math.round(file.size / 1024 * 10) / 10 })
       } else {
         setImagePreview(null)
-        setFileInfo({ name: file.name, type: file.type || guessMimeFromName(file.name), sizeKB: Math.round(file.size / 102.4) / 10 })
+        setFileInfo({ name: file.name, type: file.type || guessMimeFromName(file.name), sizeKB: Math.round(file.size / 1024 * 10) / 10 })
       }
+    } else {
+      setImagePreview(null)
+      setFileInfo(null)
     }
   }
 
@@ -391,6 +427,21 @@ export default function App() {
               <a href={toAbsoluteUrl(result.short_url)} className="link" target="_blank" rel="noreferrer">
                 {toAbsoluteUrl(result.short_url)}
               </a>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(toAbsoluteUrl(result.short_url))
+                    setCopySuccess(true)
+                    setTimeout(() => setCopySuccess(false), 2000)
+                  } catch (err) {
+                    console.error('Copy failed:', err)
+                  }
+                }}
+                className="button"
+                style={{ marginLeft: '10px', fontSize: '14px', padding: '5px 10px' }}
+              >
+                {copySuccess ? '✓ Copied' : 'Copy'}
+              </button>
             </div>
             {result.qr_code_data && (
               <div className="qr">

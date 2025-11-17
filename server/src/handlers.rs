@@ -18,7 +18,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use askama::Template;
-use w9::templates::{ImageOgTemplate, FileInfoTemplate};
+use w9::templates::{ImageOgTemplate, FileInfoTemplate, PdfTemplate, VideoTemplate};
 use image::{imageops::FilterType, DynamicImage, ImageOutputFormat, GenericImageView};
 use sha2::{Digest, Sha256};
 use rand::{distributions::Alphanumeric, Rng};
@@ -229,9 +229,19 @@ pub async fn short_handler(State(state): State<AppState>, Path(code): Path<Strin
                             let preview_fs_path = preview_dir.join(&preview_name);
                             let preview_web_path = format!("previews/{}", preview_name);
                             if !preview_fs_path.exists() {
-                                let _ = std::fs::create_dir_all(&preview_dir);
-                                let _ = try_generate_preview(&original_fs_path, &preview_fs_path);
+                                // Generate preview asynchronously in background
+                                let orig_path = original_fs_path.clone();
+                                let prev_path = preview_fs_path.clone();
+                                let prev_dir = preview_dir.clone();
+                                tokio::spawn(async move {
+                                    let _ = tokio::fs::create_dir_all(&prev_dir).await;
+                                    // Run CPU-intensive preview generation in blocking thread
+                                    let _ = tokio::task::spawn_blocking(move || {
+                                        try_generate_preview(&orig_path, &prev_path)
+                                    }).await;
+                                });
                             }
+                            // Use preview if exists, otherwise fall back to original
                             if preview_fs_path.exists() {
                                 format!("{}/files/{}", state.base_url, preview_web_path)
                             } else {
@@ -273,13 +283,59 @@ pub async fn short_handler(State(state): State<AppState>, Path(code): Path<Strin
                         title: "Shared Image".to_string(),
                         description: "Shared via w9.se".to_string(),
                     };
-                    return Html(tpl.render().unwrap_or_else(|_| "Template error".to_string())).into_response();
+                    let html = Html(tpl.render().unwrap_or_else(|_| "Template error".to_string()));
+                    let mut response = html.into_response();
+                    // Add cache headers for better performance
+                    response.headers_mut().insert(
+                        axum::http::header::CACHE_CONTROL,
+                        HeaderValue::from_static("public, max-age=3600")
+                    );
+                    return response;
                 }
                 let filename_display = StdPath::new(filename).file_name().and_then(|f| f.to_str()).unwrap_or(filename).to_string();
                 let file_url = format!("{}/files/{}", state.base_url, filename);
                 let page_url = format!("{}/s/{}", state.base_url, code);
+                
+                // PDF files: embedded viewer
+                if ext.eq_ignore_ascii_case("pdf") {
+                    let tpl = PdfTemplate { filename: filename_display, file_url, page_url };
+                    let html = Html(tpl.render().unwrap_or_else(|_| "Template error".to_string()));
+                    let mut response = html.into_response();
+                    response.headers_mut().insert(
+                        axum::http::header::CACHE_CONTROL,
+                        HeaderValue::from_static("public, max-age=3600")
+                    );
+                    return response;
+                }
+                
+                // Video files: HTML5 player
+                if ext.eq_ignore_ascii_case("mp4") || ext.eq_ignore_ascii_case("webm") || 
+                   ext.eq_ignore_ascii_case("mov") || ext.eq_ignore_ascii_case("avi") || 
+                   ext.eq_ignore_ascii_case("mkv") {
+                    let tpl = VideoTemplate { 
+                        filename: filename_display, 
+                        file_url, 
+                        mime: mime.to_string(), 
+                        page_url 
+                    };
+                    let html = Html(tpl.render().unwrap_or_else(|_| "Template error".to_string()));
+                    let mut response = html.into_response();
+                    response.headers_mut().insert(
+                        axum::http::header::CACHE_CONTROL,
+                        HeaderValue::from_static("public, max-age=3600")
+                    );
+                    return response;
+                }
+                
+                // Other files: generic download page
                 let tpl = FileInfoTemplate { filename: filename_display, file_url, mime: mime.to_string(), page_url };
-                return Html(tpl.render().unwrap_or_else(|_| "Template error".to_string())).into_response();
+                let html = Html(tpl.render().unwrap_or_else(|_| "Template error".to_string()));
+                let mut response = html.into_response();
+                response.headers_mut().insert(
+                    axum::http::header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=3600")
+                );
+                return response;
             }
             (StatusCode::NOT_FOUND, "File not found").into_response()
         }
