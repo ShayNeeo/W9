@@ -28,12 +28,20 @@ sudo apt-get install -y build-essential pkg-config libsqlite3-dev nodejs npm ngi
 # Create service user
 id -u $SERVICE_USER >/dev/null 2>&1 || sudo useradd --system --create-home --home-dir $INSTALL_DIR --shell /usr/sbin/nologin $SERVICE_USER
 
-# Build backend
+# Build backend (clean first to force rebuild)
+echo "Building backend..."
 if [ "$BUILD_USER" != "root" ]; then
-  sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && cargo build --release"
+  sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && rm -rf target && cargo build --release 2>&1" | tail -20
 else
-  bash -lc "cd '$ROOT_DIR' && cargo build --release"
+  bash -lc "cd '$ROOT_DIR' && rm -rf target && cargo build --release 2>&1" | tail -20
 fi
+
+# Check if binary exists
+if [ ! -f "$ROOT_DIR/target/release/w9" ]; then
+  echo "ERROR: Build failed, binary not found at $ROOT_DIR/target/release/w9"
+  exit 1
+fi
+echo "✓ Backend built successfully"
 
 # Build frontend
 cd "$ROOT_DIR/frontend"
