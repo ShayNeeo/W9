@@ -10,23 +10,7 @@ Fix this error: Cloudflare 521:
 I already point the domain A to the VPS with proxied.
 Why this happen?
 ```
-shayneeo@x1:~/W9$ hostname -I && echo "---" && sudo iptables -L -n 2>/dev/null | grep -E "(80|INPUT)" | head -10
-162.43.30.192 
----
-Chain INPUT (policy ACCEPT)
-shayneeo@x1:~/W9$ git pull && ./deploy/install.sh
-remote: Enumerating objects: 13, done.
-remote: Counting objects: 100% (13/13), done.
-remote: Compressing objects: 100% (3/3), done.
-remote: Total 7 (delta 3), reused 7 (delta 3), pack-reused 0 (from 0)
-Unpacking objects: 100% (7/7), 736 bytes | 184.00 KiB/s, done.
-From https://github.com/ShayNeeo/W9
-   6f96698..e3adea7  main       -> origin/main
-Updating 6f96698..e3adea7
-Fast-forward
- deploy/install.sh      |   4 +
- server/src/handlers.rs | 180 +-------------------------------------------
- 2 files changed, 6 insertions(+), 178 deletions(-)
+shayneeo@x1:~/W9$ sudo DOMAIN=w9.se BASE_URL=https://w9.se ./deploy/install.sh
 Repo root: /home/shayneeo/W9
 Building release (as user: shayneeo)
 Installing system packages...
@@ -48,7 +32,6 @@ ufw is already the newest version (0.36.2-9).
 Solving dependencies... Done
 0 upgraded, 0 newly installed, 0 to remove and 81 not upgraded.
 Building backend release (as user: shayneeo)
-   Compiling w9 v0.1.0 (/home/shayneeo/W9/server)
 warning: value assigned to `cur` is never read
    --> server/src/handlers.rs:134:27
     |
@@ -59,10 +42,10 @@ warning: value assigned to `cur` is never read
     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
 
 warning: `w9` (bin "w9") generated 1 warning
-    Finished `release` profile [optimized] target(s) in 10.04s
+    Finished `release` profile [optimized] target(s) in 0.16s
 Building frontend...
 
-up to date, audited 31 packages in 782ms
+up to date, audited 31 packages in 798ms
 
 4 packages are looking for funding
   run `npm fund` for details
@@ -82,7 +65,7 @@ vite v5.4.21 building for production...
 dist/index.html                   0.39 kB │ gzip:  0.26 kB
 dist/assets/index-9WusT_-b.css    1.52 kB │ gzip:  0.62 kB
 dist/assets/index-Sr-nNy_0.js   147.55 kB │ gzip: 47.65 kB
-✓ built in 1.51s
+✓ built in 1.49s
 Frontend built to /home/shayneeo/W9/frontend/dist
 Installing binary to /opt/w9/w9
 Installing frontend to /var/www/w9
@@ -94,21 +77,21 @@ Configuring nginx for frontend + API on w9.se
 nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
 nginx: configuration file /etc/nginx/nginx.conf test is successful
 ✓ Nginx config valid
+Skipping adding existing rule
+Skipping adding existing rule (v6)
 Starting (or restarting) w9 service
 ● w9.service - w9 - Link & file sharer service
      Loaded: loaded (/etc/systemd/system/w9.service; enabled; preset: enabled)
-     Active: active (running) since Mon 2025-11-17 10:23:14 UTC; 36ms ago
- Invocation: eeaa4c83fb9d43c5a9e69d6b96365779
-   Main PID: 25387 (w9)
-      Tasks: 4 (limit: 4599)
-     Memory: 1.3M (peak: 1.8M)
-        CPU: 9ms
+     Active: active (running) since Mon 2025-11-17 10:39:29 UTC; 27ms ago
+ Invocation: 35d7c913b33e4e8ea04ffc9931b4124a
+   Main PID: 25990 ((w9))
+      Tasks: 1 (limit: 4599)
+     Memory: 1.7M (peak: 1.7M)
+        CPU: 5ms
      CGroup: /system.slice/w9.service
-             └─25387 /opt/w9/w9
+             └─25990 "(w9)"
 
-Nov 17 10:23:14 x1 systemd[1]: Started w9.service - w9 - Link & file sharer service.
-Nov 17 10:23:14 x1 w9[25387]: 2025-11-17T10:23:14.623573Z  INFO Base URL: https://w9.se
-Nov 17 10:23:14 x1 w9[25387]: 2025-11-17T10:23:14.624090Z  INFO 🚀 Server listening on 0.0.0.0:10105
+Nov 17 10:39:29 x1 systemd[1]: Started w9.service - w9 - Link & file sharer service.
 Reloading nginx (if installed)
 
 ✓ Done! Service is running.

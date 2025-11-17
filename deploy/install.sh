@@ -177,6 +177,7 @@ HOST=0.0.0.0
 PORT=$APP_PORT
 BASE_URL=$BASE_URL
 DATABASE_PATH=$DATA_DIR/w9.db
+UPLOADS_DIR=$UPLOADS_DIR
 ENVV
 }
 
@@ -299,13 +300,37 @@ fi
 if is_enabled "$SYSTEMD_ENABLE"; then
   echo "Starting (or restarting) $SERVICE_NAME service"
   sudo systemctl restart "$SERVICE_NAME" || sudo systemctl start "$SERVICE_NAME"
+  sleep 2
+  if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+    echo "✓ Service is running"
+    # Verify the service is listening on the expected port
+    if command -v ss >/dev/null 2>&1; then
+      if ss -tln | grep -q ":$APP_PORT "; then
+        echo "✓ Service is listening on port $APP_PORT"
+      else
+        echo "WARNING: Service may not be listening on port $APP_PORT" >&2
+      fi
+    fi
+  else
+    echo "ERROR: Service failed to start" >&2
+    sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
+    echo "Check logs with: sudo journalctl -u $SERVICE_NAME -n 50" >&2
+  fi
   sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
 fi
 
 if is_enabled "$NGINX_ENABLE"; then
   echo "Reloading nginx (if installed)"
   if command -v nginx >/dev/null 2>&1; then
+    sudo systemctl enable nginx || true
     sudo systemctl reload nginx || sudo systemctl restart nginx || true
+    sleep 1
+    if ! sudo systemctl is-active --quiet nginx; then
+      echo "WARNING: nginx is not running after reload/restart" >&2
+      sudo systemctl status nginx --no-pager -l || true
+    else
+      echo "✓ Nginx is running"
+    fi
   fi
 fi
 

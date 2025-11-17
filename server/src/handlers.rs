@@ -154,7 +154,11 @@ fn try_generate_preview(original_path: &StdPath, preview_path: &StdPath) -> Resu
 }
 
 #[derive(Clone)]
-pub struct AppState { pub db_path: String, pub base_url: String }
+pub struct AppState { 
+    pub db_path: String, 
+    pub base_url: String,
+    pub uploads_dir: String,
+}
 
 fn is_allowed_extension(ext: &str) -> bool {
     ALLOWED_EXTENSIONS.iter().any(|&allowed| allowed.eq_ignore_ascii_case(ext))
@@ -214,14 +218,14 @@ pub async fn short_handler(State(state): State<AppState>, Path(code): Path<Strin
                     let image_url_full = format!("{}/files/{}", state.base_url, filename);
                     // For raster images: if original <= 1MB, use original; else generate a preview
                     let og_image_url = if !ext.eq_ignore_ascii_case("svg") {
-                        let original_fs_path = StdPath::new("uploads").join(filename);
+                        let original_fs_path = StdPath::new(&state.uploads_dir).join(filename);
                         let original_is_small = std::fs::metadata(&original_fs_path)
                             .map(|m| m.len() as usize <= PREVIEW_MAX_BYTES)
                             .unwrap_or(false);
                         if original_is_small {
                             image_url_full.clone()
                         } else {
-                            let preview_dir = StdPath::new("uploads").join("previews");
+                            let preview_dir = StdPath::new(&state.uploads_dir).join("previews");
                             let preview_name = make_preview_filename(filename);
                             let preview_fs_path = preview_dir.join(&preview_name);
                             let preview_web_path = format!("previews/{}", preview_name);
@@ -249,7 +253,7 @@ pub async fn short_handler(State(state): State<AppState>, Path(code): Path<Strin
                     let wants_html = accept.contains("text/html");
                     if !wants_html {
                         // For non-HTML (e.g., direct image fetch), stream the file instead of redirecting to avoid user-agent caching/transform issues
-                        let fs_path = StdPath::new("uploads").join(filename);
+                        let fs_path = StdPath::new(&state.uploads_dir).join(filename);
                         if let Ok(bytes) = std::fs::read(&fs_path) {
                             let mut resp = axum::response::Response::new(bytes.into());
                             resp.headers_mut().insert(axum::http::header::CONTENT_TYPE, axum::http::HeaderValue::from_str(mime.as_ref()).unwrap_or(axum::http::HeaderValue::from_static("image/jpeg")));
@@ -388,10 +392,10 @@ pub async fn admin_delete_item(
     if let Some((kind, value)) = kind_value {
         if kind == "file" {
             if let Some(fname) = value.strip_prefix("file:") {
-                let path_to_delete = std::path::PathBuf::from("uploads").join(fname);
+                let path_to_delete = std::path::PathBuf::from(&state.uploads_dir).join(fname);
                 let _ = tokio::fs::remove_file(&path_to_delete).await;
                 let preview_name = make_preview_filename(fname);
-                let preview_path = std::path::PathBuf::from("uploads").join("previews").join(preview_name);
+                let preview_path = std::path::PathBuf::from(&state.uploads_dir).join("previews").join(preview_name);
                 let _ = tokio::fs::remove_file(preview_path).await;
             }
         }
@@ -419,10 +423,10 @@ pub async fn api_upload(State(state): State<AppState>, mut multipart: Multipart)
                 if let Some(fname) = field.file_name().map(|s| s.to_string()) {
                     let ext = StdPath::new(&fname).extension().and_then(|e| e.to_str()).unwrap_or("bin");
                     if !is_allowed_extension(ext) { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "File type not allowed"}))).into_response(); }
-                    if let Err(e) = fs::create_dir_all("uploads").await { tracing::error!("create uploads dir: {}", e); return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": "Server error"}))).into_response(); }
+                    if let Err(e) = fs::create_dir_all(&state.uploads_dir).await { tracing::error!("create uploads dir: {}", e); return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": "Server error"}))).into_response(); }
                     let id = Uuid::new_v4();
                     let filename_saved = format!("{}.{}", id, ext);
-                    let path = format!("uploads/{}", filename_saved);
+                    let path = format!("{}/{}", state.uploads_dir, filename_saved);
                     let mut out = match tokio::fs::File::create(&path).await { Ok(f) => f, Err(e) => { tracing::error!("create file: {}", e); return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": "Server error"}))).into_response(); } };
                     let mut written: usize = 0;
                     while let Ok(Some(chunk)) = field.chunk().await {

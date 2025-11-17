@@ -47,7 +47,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize SQLite (file-based)
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "data/w9.db".to_string());
-    std::fs::create_dir_all("data").ok();
+    // Ensure database directory exists
+    if let Some(parent) = std::path::Path::new(&db_path).parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
     let conn = Connection::open(&db_path)?;
     conn.execute_batch(
         r#"
@@ -75,7 +78,18 @@ async fn main() -> anyhow::Result<()> {
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| format!("https://w9.se"));
 
-    let app_state = handlers::AppState { db_path: db_path.clone(), base_url: base_url.clone() };
+    // Get uploads directory from environment or use default relative path
+    let uploads_dir = std::env::var("UPLOADS_DIR")
+        .unwrap_or_else(|_| "uploads".to_string());
+    // Ensure uploads directory exists
+    std::fs::create_dir_all(&uploads_dir).ok();
+    tracing::info!("Uploads directory: {}", uploads_dir);
+
+    let app_state = handlers::AppState { 
+        db_path: db_path.clone(), 
+        base_url: base_url.clone(),
+        uploads_dir: uploads_dir.clone(),
+    };
 
     let app = Router::new()
         .route("/health", get(health_check))
@@ -104,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
                 .allow_headers(Any)
                 .expose_headers(Any)
         )
-        .nest_service("/files", get_service(ServeDir::new("uploads")).handle_error(|_| async { (StatusCode::INTERNAL_SERVER_ERROR, "IO Error") }));
+        .nest_service("/files", get_service(ServeDir::new(&uploads_dir)).handle_error(|_| async { (StatusCode::INTERNAL_SERVER_ERROR, "IO Error") }));
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!("🚀 Server listening on {}", addr);
