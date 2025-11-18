@@ -233,5 +233,51 @@ pub struct PdfTemplate { pub filename: String, pub file_url: String, pub page_ur
 </html>"#, ext = "html")]
 pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime: String, pub page_url: String }
 
+#[derive(Template)]
+#[template(source = r#"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Notepad</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="canonical" href="{{ page_url }}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="w9.se">
+    <meta property="og:title" content="Notepad">
+    <meta property="og:description" content="Shared Notepad">
+    <meta property="og:url" content="{{ page_url }}">
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Courier New,monospace;background:#fff;color:#000;min-height:100vh;padding:2rem}
+      main{max-width:800px;margin:0 auto;background:#fff;padding:2rem;border:2px solid #000}
+      .content{line-height:1.6;word-wrap:break-word}
+      .content h1,.content h2,.content h3,.content h4,.content h5,.content h6{margin-top:1.5rem;margin-bottom:0.5rem}
+      .content p{margin-bottom:1rem}
+      .content ul,.content ol{margin-left:1.5rem;margin-bottom:1rem}
+      .content code{background:#f5f5f5;padding:0.2rem 0.4rem;border:1px solid #ddd}
+      .content pre{background:#f5f5f5;padding:1rem;border:1px solid #ddd;overflow-x:auto;margin-bottom:1rem}
+      .content pre code{background:transparent;padding:0;border:none}
+      .content blockquote{border-left:3px solid #000;padding-left:1rem;margin-left:0;margin-bottom:1rem}
+      .content a{color:#000;text-decoration:underline}
+      .content table{border-collapse:collapse;width:100%;margin-bottom:1rem}
+      .content table th,.content table td{border:1px solid #000;padding:0.5rem}
+      .content table th{background:#f5f5f5}
+      .actions{margin-top:2rem;display:flex;gap:1rem}
+      a{font-family:inherit;font-size:14px;padding:0.5rem 1rem;background:#000;color:#fff;text-decoration:none;border:2px solid #000}
+      a:hover{background:#fff;color:#000}
+      @media(prefers-color-scheme:dark){body{background:#000;color:#fff}main{border-color:#fff}.content code,.content pre{background:#1a1a1a;border-color:#333}.content table th{background:#1a1a1a}.content table th,.content table td{border-color:#fff}a{background:#fff;color:#000;border-color:#fff}a:hover{background:#000;color:#fff}}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="content">{{ content|safe }}</div>
+      <div class="actions">
+        <a href="/">← Home</a>
+      </div>
+    </main>
+  </body>
+</html>"#, ext = "html")]
+pub struct NotepadTemplate { pub content: String, pub page_url: String }
+
 // Admin templates removed - frontend handles all admin UI
 // Backend only provides JSON API endpoints

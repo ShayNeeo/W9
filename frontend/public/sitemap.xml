@@ -4,18 +4,36 @@
     <loc>https://w9.se/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
-    <lastmod>2025-11-17</lastmod>
+    <lastmod>2025-01-20</lastmod>
+  </url>
+  <url>
+    <loc>https://w9.se/short</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2025-01-20</lastmod>
+  </url>
+  <url>
+    <loc>https://w9.se/note</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2025-01-20</lastmod>
+  </url>
+  <url>
+    <loc>https://w9.se/convert</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+    <lastmod>2025-01-20</lastmod>
   </url>
   <url>
     <loc>https://w9.se/admin/login</loc>
     <changefreq>never</changefreq>
     <priority>0.3</priority>
-    <lastmod>2025-11-17</lastmod>
+    <lastmod>2025-01-20</lastmod>
   </url>
   <url>
     <loc>https://w9.se/admin</loc>
     <changefreq>never</changefreq>
     <priority>0.1</priority>
-    <lastmod>2025-11-17</lastmod>
+    <lastmod>2025-01-20</lastmod>
   </url>
 </urlset>

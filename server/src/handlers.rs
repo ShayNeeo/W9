@@ -18,7 +18,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use askama::Template;
-use w9::templates::{ImageOgTemplate, FileInfoTemplate, PdfTemplate, VideoTemplate};
+use w9::templates::{ImageOgTemplate, FileInfoTemplate, PdfTemplate, VideoTemplate, NotepadTemplate};
 use image::{imageops::FilterType, DynamicImage, ImageOutputFormat, GenericImageView};
 use sha2::{Digest, Sha256};
 use rand::{distributions::Alphanumeric, Rng};
@@ -845,4 +845,114 @@ pub async fn api_upload(State(state): State<AppState>, mut multipart: Multipart)
     }
 
     (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "Provide content or file"}))).into_response()
+}
+
+fn render_markdown(md: &str) -> String {
+    use pulldown_cmark::{Parser, html};
+    let parser = Parser::new(md);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    html_output
+}
+
+#[debug_handler]
+pub async fn api_notepad(State(state): State<AppState>, mut multipart: Multipart) -> axum::response::Response {
+    let mut content: Option<String> = None;
+    let mut custom_code_raw: Option<String> = None;
+
+    while let Ok(Some(mut field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("");
+        match name {
+            "content" => {
+                if let Ok(text) = field.text().await {
+                    if !text.trim().is_empty() {
+                        content = Some(text.trim().to_string());
+                    }
+                }
+            }
+            "custom_code" => {
+                if let Ok(v) = field.text().await {
+                    custom_code_raw = Some(v);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let content = match content {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"success": false, "error": "Content is required"})),
+            )
+            .into_response()
+        }
+    };
+
+    let custom_code = match custom_code_raw {
+        Some(raw) if !raw.trim().is_empty() => match normalize_custom_code(&raw) {
+            Ok(code) => Some(code),
+            Err(msg) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"success": false, "error": msg})),
+                )
+                .into_response()
+            }
+        },
+        _ => None,
+    };
+
+    let code = match save_item(&state.db_path, custom_code.as_ref(), "notepad", &content) {
+        Ok(c) => c,
+        Err(SaveItemError::CodeExists) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"success": false, "error": "Custom code already exists"})),
+            )
+            .into_response()
+        }
+        Err(SaveItemError::Database(msg)) => {
+            tracing::error!("Database error saving notepad: {}", msg);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"success": false, "error": "Database error"})),
+            )
+            .into_response()
+        }
+    };
+
+    let short_url = format!("{}/n/{}", state.base_url, code);
+    Json(serde_json::json!({"success": true, "short_url": short_url})).into_response()
+}
+
+pub async fn notepad_handler(State(state): State<AppState>, Path(code): Path<String>) -> axum::response::Response {
+    let (kind, value) = {
+        let conn = Connection::open(&state.db_path).unwrap();
+        let mut stmt = conn.prepare("SELECT kind, value FROM items WHERE code = ?1").unwrap();
+        let row = stmt.query_row(params![code.clone()], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)));
+        match row {
+            Ok(v) => v,
+            Err(_) => return (StatusCode::NOT_FOUND, "Not found").into_response(),
+        }
+    };
+
+    if kind != "notepad" {
+        return (StatusCode::NOT_FOUND, "Not found").into_response();
+    }
+
+    let page_url = format!("{}/n/{}", state.base_url, code);
+    let html_content = render_markdown(&value);
+    let tpl = NotepadTemplate {
+        content: html_content,
+        page_url,
+    };
+    let html = Html(tpl.render().unwrap_or_else(|_| "Template error".to_string()));
+    let mut response = html.into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=3600"),
+    );
+    response
 }

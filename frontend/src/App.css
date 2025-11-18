@@ -17,9 +17,41 @@ body {
 .app {
   min-height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   padding: 2rem;
+}
+
+.header {
+  width: 100%;
+  max-width: 640px;
+  margin-bottom: 1rem;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border: 2px solid var(--border);
+  padding: 0.5rem;
+}
+
+.nav-link {
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  color: var(--fg);
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.nav-link:hover {
+  border-color: var(--border);
+}
+
+.nav-link.active {
+  border-color: var(--border);
+  background: var(--fg);
+  color: var(--bg);
 }
 
 .container {
@@ -72,6 +104,12 @@ h1 {
   border: 2px solid var(--border);
   background: var(--bg);
   color: var(--fg);
+  font-family: inherit;
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 100px;
 }
 
 .checkbox {

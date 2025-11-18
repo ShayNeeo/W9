@@ -1,4 +1,5 @@
 import { useState, useRef, FormEvent, useEffect } from 'react'
+import { marked } from 'marked'
 
 const API_BASE: string = import.meta.env?.VITE_API_BASE_URL || ''
 const adminApi = (path: string) => {
@@ -19,12 +20,37 @@ type ErrorResult = {
 
 type Result = SuccessResult | ErrorResult
 
+type NotepadResult = {
+  success: true
+  short_url: string
+} | {
+  success: false
+  error: string
+}
+
 // Simple router
 function useRoute() {
   const path = window.location.pathname
   if (path === '/admin/login') return 'admin-login'
   if (path.startsWith('/admin')) return 'admin'
+  if (path === '/short' || path.startsWith('/short/')) return 'shorts'
+  if (path === '/note' || path.startsWith('/note')) return 'note'
+  if (path === '/convert' || path.startsWith('/convert')) return 'convert'
   return 'home'
+}
+
+function Header() {
+  const path = window.location.pathname
+  return (
+    <header className="header">
+      <nav className="nav">
+        <a href="/" className={path === '/' ? 'nav-link active' : 'nav-link'}>Home</a>
+        <a href="/short" className={path.startsWith('/short') ? 'nav-link active' : 'nav-link'}>W9 Short Links</a>
+        <a href="/note" className={path.startsWith('/note') ? 'nav-link active' : 'nav-link'}>W9 Notepad</a>
+        <a href="/convert" className={path.startsWith('/convert') ? 'nav-link active' : 'nav-link'}>W9 Converter</a>
+      </nav>
+    </header>
+  )
 }
 
 function AdminLogin() {
@@ -219,15 +245,24 @@ function AdminPanel() {
   )
 }
 
-export default function App() {
-  const route = useRoute()
+function Homepage() {
+  return (
+    <div className="app">
+      <Header />
+      <main className="container">
+        <h1>W9 Group</h1>
+        <p className="subtitle">Open source project: contribute to open-source move the world forward.</p>
+        <div style={{ marginTop: '2rem' }}>
+          <a href="https://github.com/ShayNeeo/W9" target="_blank" rel="noreferrer" className="button" style={{ display: 'inline-block' }}>
+            View on GitHub
+          </a>
+        </div>
+      </main>
+    </div>
+  )
+}
 
-  if (route === 'admin-login') {
-    return <AdminLogin />
-  }
-  if (route === 'admin') {
-    return <AdminPanel />
-  }
+function ShortsPage() {
   const [urlInput, setUrlInput] = useState('')
   const [fileInput, setFileInput] = useState<File | null>(null)
   const [generateQr, setGenerateQr] = useState(false)
@@ -242,7 +277,6 @@ export default function App() {
 
   const fileRef = useRef<HTMLInputElement | null>(null)
 
-  // Cleanup preview URL on unmount
   useEffect(() => {
     return () => {
       if (imagePreview) {
@@ -254,21 +288,18 @@ export default function App() {
   function handleUrlChange(v: string) {
     setUrlInput(v)
     if (fileInput) {
-      // Clear file if URL is being typed
       if (fileRef.current) fileRef.current.value = ''
       setFileInput(null)
     }
   }
 
   function handleFileChange(file: File | null) {
-    // Clean up previous preview URL to prevent memory leak
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview)
     }
     
     setFileInput(file)
     if (file) {
-      // Clear URL if a file is chosen
       setUrlInput('')
       if (file.type.startsWith('image/')) {
         const url = URL.createObjectURL(file)
@@ -296,7 +327,6 @@ export default function App() {
     setResult(null)
 
     try {
-      // Validate inputs
       const hasUrl = urlInput.trim().length > 0
       const hasFile = !!fileInput
       if (!hasUrl && !hasFile) {
@@ -343,8 +373,9 @@ export default function App() {
 
   return (
     <div className="app">
+      <Header />
       <main className="container">
-        <h1>w9 - URL Shortener & File Sharer</h1>
+        <h1>W9 Short Links</h1>
         <p className="subtitle">Share a link or upload a file · get a short URL with QR code</p>
 
         <form onSubmit={handleSubmit} className="form">
@@ -479,6 +510,165 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+function NotepadPage() {
+  const [content, setContent] = useState('')
+  const [customCode, setCustomCode] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [result, setResult] = useState<{ short_url: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copySuccess, setCopySuccess] = useState(false)
+
+  function handleCustomCodeChange(v: string) {
+    const cleaned = v.replace(/[^a-zA-Z0-9-_]/g, '').toLowerCase()
+    setCustomCode(cleaned)
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+    setResult(null)
+
+    try {
+      if (!content.trim()) {
+        setError('Please enter some content.')
+        return
+      }
+
+      const form = new FormData()
+      form.set('content', content.trim())
+      const trimmedCode = customCode.trim()
+      if (trimmedCode) {
+        form.set('custom_code', trimmedCode)
+      }
+
+      const resp = await fetch(joinUrl(API_BASE, '/api/notepad'), {
+        method: 'POST',
+        body: form,
+      })
+
+      const data = (await resp.json()) as NotepadResult
+      if (!resp.ok || !data.success) {
+        const msg = data.success === false ? data.error : `HTTP ${resp.status}`
+        throw new Error(msg)
+      }
+
+      setResult({ short_url: data.short_url })
+    } catch (err: any) {
+      setError(err?.message || 'Unexpected error')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="app">
+      <Header />
+      <main className="container">
+        <h1>W9 Notepad</h1>
+        <p className="subtitle">Quickly paste something and create a short link</p>
+
+        <form onSubmit={handleSubmit} className="form">
+          <label className="label">
+            Content (Markdown supported)
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="input"
+              rows={10}
+              placeholder="Paste your content here... Markdown is supported."
+            />
+          </label>
+
+          <label className="label">
+            Custom short code (optional)
+            <div className="custom-code-row">
+              <span className="code-prefix">/n/</span>
+              <input
+                type="text"
+                value={customCode}
+                onChange={(e) => handleCustomCodeChange(e.target.value)}
+                className="input"
+                placeholder="my-note"
+                maxLength={32}
+              />
+            </div>
+            <span className="hint">Letters, numbers, '-' and '_'. Minimum 3 characters.</span>
+          </label>
+
+          <button type="submit" className="button" disabled={isLoading}>
+            {isLoading ? 'Creating…' : 'Create Notepad'}
+          </button>
+        </form>
+
+        {isLoading && <div className="status">Creating…</div>}
+        {error && <div className="error">{error}</div>}
+        {result && (
+          <div className="result">
+            <div className="row">
+              <span className="label-inline">Notepad URL</span>
+              <a href={toAbsoluteUrl(result.short_url)} className="link" target="_blank" rel="noreferrer">
+                {toAbsoluteUrl(result.short_url)}
+              </a>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(toAbsoluteUrl(result.short_url))
+                    setCopySuccess(true)
+                    setTimeout(() => setCopySuccess(false), 2000)
+                  } catch (err) {
+                    console.error('Copy failed:', err)
+                  }
+                }}
+                className="button"
+                style={{ marginLeft: '10px', fontSize: '14px', padding: '5px 10px' }}
+              >
+                {copySuccess ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function ConverterPage() {
+  return (
+    <div className="app">
+      <Header />
+      <main className="container">
+        <h1>W9 Converter</h1>
+        <p className="subtitle">In development</p>
+      </main>
+    </div>
+  )
+}
+
+export default function App() {
+  const route = useRoute()
+
+  if (route === 'admin-login') {
+    return <AdminLogin />
+  }
+  if (route === 'admin') {
+    return <AdminPanel />
+  }
+  if (route === 'home') {
+    return <Homepage />
+  }
+  if (route === 'shorts') {
+    return <ShortsPage />
+  }
+  if (route === 'note') {
+    return <NotepadPage />
+  }
+  if (route === 'convert') {
+    return <ConverterPage />
+  }
+  return <Homepage />
 }
 
 function joinUrl(base: string, path: string) {

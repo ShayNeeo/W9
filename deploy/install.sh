@@ -220,6 +220,7 @@ server {
     location /api/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
     location /r/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
     location /s/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
+    location /n/ { proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER; proxy_set_header Host $host; }
     
     # Files - serve with caching headers
     location /files/ {

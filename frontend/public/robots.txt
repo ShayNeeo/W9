@@ -4,6 +4,8 @@ Disallow: /files/
 Disallow: /admin
 Disallow: /admin/login
 Disallow: /r/
+Disallow: /s/
+Disallow: /n/
 Crawl-delay: 1
 
 Sitemap: https://w9.se/sitemap.xml
