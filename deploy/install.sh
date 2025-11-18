@@ -94,9 +94,14 @@ fi
 if [ "$FRONTEND_NEEDS_BUILD" = "true" ]; then
     echo "Building frontend..."
     cd "$ROOT_DIR/frontend"
-    # Use npm ci if package-lock.json exists for faster, reproducible installs
+    # Use npm ci if package-lock.json exists and is in sync, otherwise use npm install
     if [ -f "package-lock.json" ]; then
-        npm ci --prefer-offline --no-audit 2>&1 | tail -1
+        if npm ci --prefer-offline --no-audit 2>&1 | tail -1; then
+            echo "✓ Dependencies installed with npm ci"
+        else
+            echo "⚠ package-lock.json out of sync, updating..."
+            npm install --prefer-offline --no-audit 2>&1 | tail -1
+        fi
     else
         npm install --prefer-offline --no-audit 2>&1 | tail -1
     fi
