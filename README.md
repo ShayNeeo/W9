@@ -1,114 +1,115 @@
-# w9 — Simple Link & File Sharer
+# W9 Tools
 
-[![Rust](https://img.shields.io/badge/rust-1.75+-blue.svg)](https://www.rust-lang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+W9 Tools is a lightweight utility stack for instant link shortening, markdown notepads, and secure file sharing. The backend is written in Rust (Axum) and serves a React/Vite single-page frontend. The stack is intentionally minimal: a single binary, SQLite for metadata, and the local filesystem for uploads.
 
-**w9** is a minimal, fast link and file sharing web application built entirely in Rust. Paste a URL or upload a file, and get a short link instantly. Perfect for quickly sharing content without accounts or complex setups.
+## Key Capabilities
 
-![w9 Screenshot](https://via.placeholder.com/800x400/000000/FFFFFF?text=w9+Screenshoot)
+- Share short links pointing to URLs, files, or markdown notepads
+- Generate optional QR codes for every short link
+- Admin panel for inspecting or deleting any item (links, files, notepads)
+- Markdown notepad writer with custom short codes and server-side rendering
+- File uploads with automatic previews for images and media
 
-## ✨ Features
+## Architecture
 
-- 🚀 **Instant Sharing**: Upload files or paste URLs to create short links in seconds
-- 📱 **QR Codes**: Generate QR codes for easy mobile access
-- 🖼️ **Smart Image Previews**: Images show rich previews in chat apps (Discord, Telegram, etc.)
-- 📁 **File Support**: Upload and share any file type (documents, archives, media, etc.)
-- 🔒 **Admin Panel**: Manage uploaded content with a simple admin interface
-- 🎨 **Clean Design**: Minimalist, monochrome interface - no JavaScript required
-- ⚡ **Fast & Lightweight**: Built with Rust for maximum performance
+- **Backend:** Rust + Axum + Askama templates
+- **Frontend:** React + Vite + TypeScript
+- **Database:** SQLite (single file)
+- **Static Assets / Uploads:** Filesystem (`uploads/`)
+- **Deployment:** Systemd service + Nginx reverse proxy via `deploy/install.sh`
 
-## 🚀 Quick Start
+## Installing with `deploy/install.sh`
 
-### Option 1: Docker (Easiest)
+The repository includes an opinionated installation script that compiles the backend, builds the frontend, configures systemd + nginx, and sets up TLS with a self-signed certificate.
+
+### Prerequisites
+
+- Ubuntu/Debian host with sudo access
+- Git, Rust toolchain, Node 18+, npm
+- Domain pointing to the server (optional but recommended)
+
+### Steps
+
+1. Clone the repository on the target server:
+   ```bash
+   git clone https://github.com/ShayNeeo/W9.git
+   cd W9/deploy
+   ```
+2. Set the environment variables used by the script (either export or inline):
+   ```bash
+   export DOMAIN=example.com
+   export BASE_URL=https://example.com
+   export APP_PORT=10105            # optional, default defined in script
+   ```
+3. Run the installer:
+   ```bash
+   ./install.sh
+   ```
+   The script performs the following:
+   - Installs missing packages (Rust toolchain, Node/npm, nginx, sqlite, etc.)
+   - Builds the backend (`cargo build --release`)
+   - Builds the frontend (`npm ci` + `npm run build`)
+   - Stops any running `w9` service, copies the binary + frontend dist
+   - Writes `/etc/default/w9` and `/etc/systemd/system/w9.service`
+   - Configures nginx at `/etc/nginx/sites-available/w9` with TLS under `/etc/nginx/ssl/$DOMAIN`
+   - Enables and starts nginx + w9 systemd services
+   - Opens ports 80/443 via ufw
+
+4. After a successful run:
+   ```bash
+   systemctl status w9
+   journalctl -u w9 -f
+   ```
+   Visit `https://DOMAIN` to confirm the UI is available.
+
+### Redeploying
+
+When code changes (backend or frontend) are pulled, rerun `deploy/install.sh`. It detects changes and only rebuilds what is necessary. To force a frontend rebuild (e.g., after editing `frontend/public/robots.txt`), remove the `frontend/dist` directory before running the script or touch any file under `frontend/src` or `frontend/public`.
+
+## Local Development
 
 ```bash
-docker run -d \
-  --name w9 \
-  -p 8080:8080 \
-  -v ./data:/app/data \
-  -v ./uploads:/app/uploads \
-  -e BASE_URL=https://your-domain.com \
-  ghcr.io/shayneeo/w9:latest
+# Backend
+cargo watch -x "run --bin w9"
+
+# Frontend
+cd frontend
+npm install
+npm run dev
 ```
 
-### Option 2: Binary Release
+Use `VITE_API_BASE_URL` in `.env` to point the frontend dev server at the backend.
 
-Download the latest release from the [releases page](https://github.com/ShayNeeo/W9/releases) and run:
+## Configuration
 
-```bash
-./w9
-```
+| Variable        | Default               | Description                               |
+|-----------------|-----------------------|-------------------------------------------|
+| `HOST`          | `0.0.0.0`             | Listen address for the backend             |
+| `PORT`          | `8080`                | Backend port                               |
+| `BASE_URL`      | `http://localhost:8080` | Public base URL used in short links         |
+| `DATABASE_PATH` | `data/w9.db`          | SQLite database path                       |
+| `UPLOADS_DIR`   | `uploads`             | Filesystem directory for uploaded assets   |
 
-Then open http://localhost:8080
+When deploying via `install.sh`, these values are written to `/etc/default/w9` and consumed by the systemd service.
 
-### Option 3: From Source
+## Usage Flow
 
-```bash
-git clone https://github.com/ShayNeeo/W9.git
-cd w9
-cargo build --release
-./target/release/w9
-```
+1. Open the home page (`/`).
+2. Navigate to:
+   - `/short` for URL/file shortener
+   - `/note` for markdown notepad (supports custom short codes)
+   - `/convert` (placeholder page for upcoming tools)
+3. For each short link, a QR code can be generated.
+4. Notepad entries render markdown on `/n/<code>` using Askama templates.
+5. Admin panel (`/admin`) requires initial credentials set on first login; this panel shows every item with delete actions.
 
-## 📖 Usage
-
-1. **Share a URL**: Paste any URL in the form and click "Create"
-2. **Upload a File**: Drag & drop or select a file to upload
-3. **Get Short Link**: Copy the generated short URL (e.g., `https://w9.se/s/abc123`)
-4. **Optional QR**: Check "Generate QR Code" for mobile sharing
-
-### Example
-
-- Original: `https://example.com/very-long-url-with-many-parameters`
-- Short: `https://w9.se/s/abc123` (with QR code for mobile)
-
-## 🏗️ Architecture
-
-- **Backend**: Rust + Axum web framework
-- **Frontend**: React + Vite (TypeScript)
-- **Database**: SQLite for metadata storage
-- **Storage**: Local filesystem for uploaded files
-- **API**: RESTful endpoints for uploads and link management
-
-## 🔧 Configuration
-
-Set these environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HOST` | `0.0.0.0` | Listen address |
-| `PORT` | `8080` | Listen port |
-| `BASE_URL` | `http://localhost:8080` | Public base URL |
-| `DATABASE_PATH` | `data/w9.db` | SQLite database path |
-
-## 🌟 Use Cases
-
-- **Quick File Sharing**: Share documents, images, or any files instantly
-- **URL Shortening**: Create clean, short links for long URLs
-- **QR Code Generation**: Perfect for printing or mobile access
-- **Team Collaboration**: Simple way to share resources without complex permissions
-- **Personal Use**: Lightweight alternative to cloud storage for quick sharing
-
-## 🤝 Contributing
-
-Contributions welcome! Please feel free to submit issues and enhancement requests.
+## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch: `git checkout -b feature/xyz`
+3. Run rustfmt / clippy / frontend lint where applicable
+4. Open a pull request describing the change and testing steps
 
-## 📝 License
+## License
 
-This project is licensed under the GNUv3 License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Axum](https://github.com/tokio-rs/axum) web framework
-- Templates powered by [Askama](https://github.com/djc/askama)
-- Icons and design inspired by minimal, functional aesthetics
-
----
-
-**Made with ❤️ in Rust** • [Report Issues](https://github.com/ShayNeeo/W9/issues) • [View Demo](https://w9.se)
+Licensed under GNU General Public License v3.0. See [LICENSE](LICENSE).
