@@ -783,7 +783,7 @@ pub async fn api_upload(State(state): State<AppState>, mut multipart: Multipart)
     let mut qr_required: bool = false;
     let mut custom_code_raw: Option<String> = None;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    while let Ok(Some(mut field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("");
         match name {
             "content" => {
