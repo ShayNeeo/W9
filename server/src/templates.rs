@@ -290,14 +290,68 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
     <script>
       document.addEventListener("DOMContentLoaded", function() {
         const content = document.querySelector(".content");
-        if (content) {
-          renderMathInElement(content, {
-            delimiters: [
-              {left: "$$", right: "$$", display: true},
-              {left: "$", right: "$", display: false}
-            ],
-            throwOnError: false,
-            ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"]
+        const katexReady = window.katex && typeof window.katex.render === "function";
+
+        function renderDollarMath(root) {
+          if (!root || !katexReady) {
+            return;
+          }
+
+          const SKIP_TAGS = new Set(["SCRIPT","NOSCRIPT","STYLE","TEXTAREA","PRE","CODE"]);
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+          const targets = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const parent = node.parentElement;
+            if (parent && SKIP_TAGS.has(parent.tagName)) {
+              continue;
+            }
+            targets.push(node);
+          }
+
+          const mathRegex = /\$\$([\s\S]+?)\$\$|\$([^$\n\r]+?)\$/g;
+
+          targets.forEach(function(textNode) {
+            const text = textNode.textContent || "";
+            let match;
+            let lastIndex = 0;
+            let replaced = false;
+            const fragment = document.createDocumentFragment();
+
+            mathRegex.lastIndex = 0;
+
+            while ((match = mathRegex.exec(text)) !== null) {
+              if (match.index > lastIndex) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+              }
+
+              const tex = (match[1] || match[2] || "").trim();
+              const displayMode = Boolean(match[1]);
+              const el = document.createElement(displayMode ? "div" : "span");
+              if (displayMode) {
+                el.className = "katex-display";
+              }
+              try {
+                window.katex.render(tex, el, { displayMode, throwOnError: false });
+              } catch (err) {
+                console.error("KaTeX render error:", err);
+                el.textContent = match[0];
+              }
+              fragment.appendChild(el);
+
+              lastIndex = mathRegex.lastIndex;
+              replaced = true;
+            }
+
+            if (!replaced) {
+              return;
+            }
+
+            if (lastIndex < text.length) {
+              fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+            }
+
+            textNode.parentNode.replaceChild(fragment, textNode);
           });
         }
 
@@ -327,7 +381,6 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
           pre.replaceWith(container);
         });
 
-        const katexReady = window.katex && typeof window.katex.render === "function";
         if (content && katexReady) {
           const preBlocks = content.querySelectorAll("pre");
           preBlocks.forEach(function(pre) {
@@ -351,6 +404,8 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
             pre.replaceWith(container);
           });
         }
+
+        renderDollarMath(content);
 
         const mermaidBlocks = content ? content.querySelectorAll("pre code.language-mermaid, pre code.mermaid") : [];
         if (mermaidBlocks.length > 0) {
