@@ -249,6 +249,7 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" crossorigin="anonymous"></script>
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
       body{font-family:Courier New,monospace;background:#fff;color:#000;min-height:100vh;padding:2rem}
@@ -268,6 +269,11 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
       .content table th{background:#f5f5f5}
       .katex{font-size:1.1em}
       .katex-display{margin:1rem 0;text-align:center}
+      .mermaid-diagram{margin:1.5rem 0;padding:1rem;border:1px solid #ddd;background:#f5f5f5;border-radius:4px;overflow:auto}
+      .mermaid-diagram svg{width:100%;height:auto}
+      @media(prefers-color-scheme:dark){
+        .mermaid-diagram{background:#1f1f1f;border-color:#444}
+      }
       .actions{margin-top:2rem;display:flex;gap:1rem}
       a{font-family:inherit;font-size:14px;padding:0.5rem 1rem;background:#000;color:#fff;text-decoration:none;border:2px solid #000}
       a:hover{background:#fff;color:#000}
@@ -283,13 +289,49 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
     </main>
     <script>
       document.addEventListener("DOMContentLoaded", function() {
-        renderMathInElement(document.querySelector(".content"), {
-          delimiters: [
-            {left: "$$", right: "$$", display: true},
-            {left: "$", right: "$", display: false}
-          ],
-          throwOnError: false
-        });
+        const content = document.querySelector(".content");
+        if (content) {
+          renderMathInElement(content, {
+            delimiters: [
+              {left: "$$", right: "$$", display: true},
+              {left: "$", right: "$", display: false}
+            ],
+            throwOnError: false
+          });
+        }
+
+        const mermaidBlocks = content ? content.querySelectorAll("pre code.language-mermaid, pre code.mermaid") : [];
+        if (mermaidBlocks.length > 0) {
+          mermaidBlocks.forEach(function(codeBlock, idx) {
+            const pre = codeBlock.parentElement;
+            if (!pre) {
+              return;
+            }
+            const container = document.createElement("div");
+            container.className = "mermaid-diagram";
+            container.dataset.source = "mermaid";
+            container.textContent = codeBlock.textContent || "";
+            pre.replaceWith(container);
+          });
+
+          const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (window.mermaid) {
+            try {
+              window.mermaid.initialize({
+                startOnLoad: false,
+                securityLevel: "strict",
+                theme: prefersDark ? "dark" : "default"
+              });
+              window.mermaid.run({ querySelector: ".mermaid-diagram" }).catch(function(err) {
+                console.error("Mermaid rendering error:", err);
+              });
+            } catch (err) {
+              console.error("Mermaid initialization failed:", err);
+            }
+          } else {
+            console.warn("Mermaid script not available, diagrams left as code blocks.");
+          }
+        }
       });
     </script>
   </body>
