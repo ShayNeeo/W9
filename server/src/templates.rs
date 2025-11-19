@@ -300,6 +300,32 @@ pub struct VideoTemplate { pub filename: String, pub file_url: String, pub mime:
           });
         }
 
+        const latexBlocks = content ? content.querySelectorAll("pre code.language-latex, pre code.latex") : [];
+        latexBlocks.forEach(function(codeBlock) {
+          const tex = codeBlock.textContent || "";
+          const pre = codeBlock.parentElement;
+          if (!pre) {
+            return;
+          }
+          const container = document.createElement("div");
+          container.className = "katex-display";
+          if (window.katex && typeof window.katex.render === "function") {
+            try {
+              window.katex.render(tex, container, { displayMode: true, throwOnError: false });
+            } catch (err) {
+              console.error("KaTeX render error:", err);
+              const fallback = document.createElement("pre");
+              fallback.textContent = tex;
+              container.replaceChildren(fallback);
+            }
+          } else {
+            const fallback = document.createElement("pre");
+            fallback.textContent = tex;
+            container.replaceChildren(fallback);
+          }
+          pre.replaceWith(container);
+        });
+
         const mermaidBlocks = content ? content.querySelectorAll("pre code.language-mermaid, pre code.mermaid") : [];
         if (mermaidBlocks.length > 0) {
           mermaidBlocks.forEach(function(codeBlock, idx) {
