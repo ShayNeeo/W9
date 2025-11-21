@@ -10,7 +10,7 @@ use axum::http::Method;
 use axum::routing::get_service;
 use axum::http::StatusCode;
 use serde_json::json;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 mod handlers;
 
