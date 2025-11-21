@@ -1057,7 +1057,7 @@ function ShortsPage() {
             <label className="label">
               Custom short code (optional)
               <div className="custom-code-row">
-                <span className="code-prefix">w9.se/</span>
+                <span className="code-prefix">w9.se/s/</span>
                 <input
                   type="text"
                   value={customCode}
@@ -1224,7 +1224,7 @@ function NotepadPage() {
           <label className="label">
             Custom short code (optional)
             <div className="custom-code-row">
-              <span className="code-prefix">/n/</span>
+              <span className="code-prefix">w9.se/n/</span>
               <input
                 type="text"
                 value={customCode}
