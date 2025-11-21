@@ -1375,7 +1375,7 @@ pub async fn notepad_handler(State(state): State<AppState>, Path(code): Path<Str
 }
 
 // Login endpoint - forwards to w9-mail
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
@@ -1403,7 +1403,7 @@ pub async fn login(State(state): State<AppState>, Json(payload): Json<LoginReque
 }
 
 // Register endpoint - forwards to w9-mail
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
@@ -1567,7 +1567,7 @@ pub struct AdminSendPasswordResetRequest {
     pub email: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ChangePasswordRequest {
     pub old_password: String,
     pub new_password: String,
@@ -1699,11 +1699,11 @@ pub async fn change_password(State(state): State<AppState>, user: AuthUser, head
             let status_code = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
             let status = StatusCode::from_u16(status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(serde_json::json!(serde_json::from_str::<serde_json::Value>(&body).unwrap_or(serde_json::json!({"error": "Invalid response"})))))
+            (status, Json(serde_json::json!(serde_json::from_str::<serde_json::Value>(&body).unwrap_or(serde_json::json!({"error": "Invalid response"}))))).into_response()
         }
         Err(e) => {
             tracing::error!("Failed to forward change password request: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to connect to authentication service"})))
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to connect to authentication service"}))).into_response()
         }
     }
 }
@@ -1718,7 +1718,7 @@ fn extract_token_from_headers(headers: &HeaderMap) -> Option<String> {
 }
 
 // Admin: List users - forwards to w9-mail
-pub async fn admin_list_users(State(state): State<AppState>, user: AuthUser, headers: HeaderMap) -> impl IntoResponse {
+pub async fn admin_list_users(State(state): State<AppState>, _user: AuthUser, headers: HeaderMap) -> impl IntoResponse {
     let token = extract_token_from_headers(&headers);
     let client = reqwest::Client::new();
     let mut req = client.get(&format!("{}/api/users", state.w9_mail_api_url));
@@ -1740,7 +1740,7 @@ pub async fn admin_list_users(State(state): State<AppState>, user: AuthUser, hea
 }
 
 // Admin: Create user - forwards to w9-mail
-pub async fn admin_create_user(State(state): State<AppState>, user: AuthUser, headers: HeaderMap, Json(payload): Json<AdminCreateUserRequest>) -> impl IntoResponse {
+pub async fn admin_create_user(State(state): State<AppState>, _user: AuthUser, headers: HeaderMap, Json(payload): Json<AdminCreateUserRequest>) -> impl IntoResponse {
     let token = extract_token_from_headers(&headers);
     let client = reqwest::Client::new();
     let mut req = client
@@ -1764,7 +1764,7 @@ pub async fn admin_create_user(State(state): State<AppState>, user: AuthUser, he
 }
 
 // Admin: Update user - forwards to w9-mail
-pub async fn admin_update_user(State(state): State<AppState>, user: AuthUser, headers: HeaderMap, Path(user_id): Path<String>, Json(payload): Json<AdminUpdateUserRequest>) -> impl IntoResponse {
+pub async fn admin_update_user(State(state): State<AppState>, _user: AuthUser, headers: HeaderMap, Path(user_id): Path<String>, Json(payload): Json<AdminUpdateUserRequest>) -> impl IntoResponse {
     let token = extract_token_from_headers(&headers);
     let client = reqwest::Client::new();
     let mut req = client
@@ -1788,7 +1788,7 @@ pub async fn admin_update_user(State(state): State<AppState>, user: AuthUser, he
 }
 
 // Admin: Delete user - forwards to w9-mail
-pub async fn admin_delete_user(State(state): State<AppState>, user: AuthUser, headers: HeaderMap, Path(user_id): Path<String>) -> impl IntoResponse {
+pub async fn admin_delete_user(State(state): State<AppState>, _user: AuthUser, headers: HeaderMap, Path(user_id): Path<String>) -> impl IntoResponse {
     let token = extract_token_from_headers(&headers);
     let client = reqwest::Client::new();
     let mut req = client.delete(&format!("{}/api/users/{}", state.w9_mail_api_url, user_id));
@@ -1809,7 +1809,7 @@ pub async fn admin_delete_user(State(state): State<AppState>, user: AuthUser, he
 }
 
 // Admin: Send password reset link - forwards to w9-mail
-pub async fn admin_send_password_reset(State(state): State<AppState>, user: AuthUser, headers: HeaderMap, Json(payload): Json<AdminSendPasswordResetRequest>) -> impl IntoResponse {
+pub async fn admin_send_password_reset(State(state): State<AppState>, _user: AuthUser, headers: HeaderMap, Json(payload): Json<AdminSendPasswordResetRequest>) -> impl IntoResponse {
     let token = extract_token_from_headers(&headers);
     let client = reqwest::Client::new();
     let mut req = client
