@@ -1,6 +1,6 @@
 // The final, corrected handlers.rs file
 
-use axum::extract::{Form, Multipart, Path, Query, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, request::Parts};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Json;
@@ -1070,7 +1070,7 @@ where
         let auth_header = parts
             .headers
             .get(axum::http::header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.to_str().ok().map(|s| s.to_string()))
             .ok_or((StatusCode::UNAUTHORIZED, "Missing authorization header"))?;
 
         let token = auth_header
