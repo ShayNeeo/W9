@@ -254,6 +254,15 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| format!("{}/verify-email", base_url.trim_end_matches('/')));
     let w9_mail_api_token = std::env::var("W9_MAIL_API_TOKEN").ok().filter(|v| !v.trim().is_empty());
     let turnstile_secret = std::env::var("TURNSTILE_SECRET_KEY").ok().filter(|v| !v.trim().is_empty());
+    let qr_logo_path = std::env::var("QR_LOGO_PATH").ok().filter(|v| !v.trim().is_empty());
+    
+    if let Some(ref logo) = qr_logo_path {
+        if !std::path::Path::new(logo).exists() {
+            tracing::warn!("QR logo path specified but file does not exist: {}", logo);
+        } else {
+            tracing::info!("QR logo configured: {}", logo);
+        }
+    }
     
     let app_state = handlers::AppState { 
         db_path: db_path.clone(), 
@@ -266,6 +275,7 @@ async fn main() -> anyhow::Result<()> {
         w9_mail_api_token,
         email_sender,
         turnstile_secret,
+        qr_logo_path,
     };
 
     // File serving (no state/auth required)

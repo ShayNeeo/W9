@@ -92,6 +92,7 @@ type Result = SuccessResult | ErrorResult
 type NotepadResult = {
   success: true
   short_url: string
+  qr_code_data: string | null
 } | {
   success: false
   error: string
@@ -1300,8 +1301,9 @@ function ShortsPage() {
 function NotepadPage() {
   const [content, setContent] = useState('')
   const [customCode, setCustomCode] = useState('')
+  const [generateQr, setGenerateQr] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [result, setResult] = useState<{ short_url: string } | null>(null)
+  const [result, setResult] = useState<{ short_url: string; qr_code_data: string | null } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copySuccess, setCopySuccess] = useState(false)
 
@@ -1328,6 +1330,7 @@ function NotepadPage() {
       if (trimmedCode) {
         form.set('custom_code', trimmedCode)
       }
+      form.set('qr_required', generateQr ? 'true' : 'false')
 
       const token = localStorage.getItem('w9_token')
       const headers: HeadersInit = {}
@@ -1346,7 +1349,7 @@ function NotepadPage() {
         throw new Error(msg)
       }
 
-      setResult({ short_url: data.short_url })
+      setResult({ short_url: data.short_url, qr_code_data: data.qr_code_data || null })
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -1390,6 +1393,16 @@ function NotepadPage() {
             <span className="hint">Letters, numbers, '-' and '_'. Minimum 3 characters.</span>
           </label>
 
+          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={generateQr}
+              onChange={(e) => setGenerateQr(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            Generate QR Code
+          </label>
+
           <button type="submit" className="button" disabled={isLoading}>
             {isLoading ? 'Creating…' : 'Create Notepad'}
           </button>
@@ -1420,6 +1433,11 @@ function NotepadPage() {
                 {copySuccess ? '✓ Copied' : 'Copy'}
               </button>
             </div>
+            {result.qr_code_data && (
+              <div className="qr" style={{ marginTop: '1rem' }}>
+                <img src={result.qr_code_data} alt="QR code" style={{ border: '2px solid #ffffff', maxWidth: '100%', height: 'auto' }} />
+              </div>
+            )}
           </div>
         )}
       </main>

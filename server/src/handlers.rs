@@ -260,6 +260,7 @@ pub struct AppState {
     pub w9_mail_api_token: Option<String>,
     pub email_sender: Arc<RwLock<Option<EmailSenderConfig>>>,
     pub turnstile_secret: Option<String>,
+    pub qr_logo_path: Option<String>,
 }
 
 const PASSWORD_MIN_LEN: usize = 8;
@@ -866,15 +867,7 @@ pub async fn result_handler(State(state): State<AppState>, Path(code): Path<Stri
     let short_link = format!("{}/s/{}", state.base_url, code);
     let qr_svg = if q.get("qr").map(|v| v=="1").unwrap_or(false) {
         let qr_target = ensure_absolute(&state.base_url, &short_link);
-        QrCode::new(qr_target.as_bytes())
-            .map(|c| c
-                .render::<Color>()
-                .min_dimensions(320,320)
-                .quiet_zone(true)
-                .dark_color(Color("#000000"))
-                .light_color(Color("#ffffff"))
-                .build())
-            .unwrap_or_default()
+        generate_qr_code_with_border(&qr_target, state.qr_logo_path.as_deref()).unwrap_or_default()
     } else { String::new() };
     let body = format!(
         r#"{{"code":"{}","short_link":"{}","qr_svg":"{}"}}"#,
@@ -1065,6 +1058,101 @@ pub(crate) fn generate_token(len: usize) -> String {
         .take(len)
         .map(char::from)
         .collect()
+}
+
+// Generate QR code with styling to match frontend design (monochrome black/white)
+// Optionally includes a logo in the center if logo_path is provided
+fn generate_qr_code_with_border(url: &str, logo_path: Option<&str>) -> Option<String> {
+    match QrCode::new(url.as_bytes()) {
+        Ok(c) => {
+            let qr_svg = c
+                .render::<Color>()
+                .min_dimensions(320, 320)
+                .quiet_zone(true)
+                .dark_color(Color("#000000"))
+                .light_color(Color("#ffffff"))
+                .build();
+            
+            // If logo path is provided, embed the logo in the center
+            if let Some(logo) = logo_path {
+                if let Ok(logo_data) = embed_logo_in_qr(&qr_svg, logo) {
+                    return Some(logo_data);
+                }
+            }
+            
+            Some(qr_svg)
+        }
+        Err(_) => None,
+    }
+}
+
+// Embed logo in the center of QR code SVG
+fn embed_logo_in_qr(qr_svg: &str, logo_path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    use base64::{Engine as _, engine::general_purpose};
+    
+    // Read logo file
+    let logo_bytes = std::fs::read(logo_path)?;
+    
+    // Determine MIME type from file extension
+    let mime_type = if logo_path.to_lowercase().ends_with(".png") {
+        "image/png"
+    } else if logo_path.to_lowercase().ends_with(".jpg") || logo_path.to_lowercase().ends_with(".jpeg") {
+        "image/jpeg"
+    } else if logo_path.to_lowercase().ends_with(".svg") {
+        "image/svg+xml"
+    } else {
+        "image/png" // default
+    };
+    
+    // Convert to base64
+    let logo_base64 = general_purpose::STANDARD.encode(&logo_bytes);
+    let logo_data_uri = format!("data:{};base64,{}", mime_type, logo_base64);
+    
+    // Parse SVG to find viewBox dimensions
+    // QR code SVG typically has viewBox="0 0 320 320" or similar
+    let qr_size = if let Some(viewbox_start) = qr_svg.find(r#"viewBox=""#) {
+        let viewbox_content_start = viewbox_start + 9; // length of 'viewBox="'
+        if let Some(viewbox_end) = qr_svg[viewbox_content_start..].find('"') {
+            let viewbox_str = &qr_svg[viewbox_content_start..viewbox_content_start + viewbox_end];
+            let coords: Vec<f64> = viewbox_str.split_whitespace()
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if coords.len() >= 4 {
+                coords[2] // width is the third coordinate
+            } else {
+                320.0 // default
+            }
+        } else {
+            320.0
+        }
+    } else {
+        320.0 // default if no viewBox found
+    };
+    
+    // Logo should be about 20% of QR code size to maintain scannability
+    let logo_size = qr_size * 0.2;
+    let logo_x = (qr_size - logo_size) / 2.0;
+    let logo_y = (qr_size - logo_size) / 2.0;
+    
+    // Find the closing </svg> tag and insert logo before it
+    if let Some(pos) = qr_svg.rfind("</svg>") {
+        let mut result = qr_svg[..pos].to_string();
+        result.push_str(&format!(
+            r#"<image href="{}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="xMidYMid meet"/>"#,
+            logo_data_uri, logo_x, logo_y, logo_size, logo_size
+        ));
+        result.push_str("</svg>");
+        Ok(result)
+    } else {
+        Err("Invalid SVG format".into())
+    }
+}
+
+// Generate QR code as data URL for API responses
+fn generate_qr_code_data_url(url: &str, logo_path: Option<&str>) -> Option<String> {
+    generate_qr_code_with_border(url, logo_path).map(|svg| {
+        format!("data:image/svg+xml;utf8,{}", urlencoding::encode(&svg))
+    })
 }
 
 
@@ -1423,20 +1511,7 @@ pub async fn api_upload(State(state): State<AppState>, headers: HeaderMap, mut m
         let short_url = format!("{}/s/{}", state.base_url, short_code);
         let qr_code_data = if qr_required {
             let qr_target = ensure_absolute(&state.base_url, &short_url);
-            match QrCode::new(qr_target.as_bytes()) {
-                Ok(c) => {
-                    let image = c
-                        .render::<qrcode::render::svg::Color>()
-                        .min_dimensions(320,320)
-                        .quiet_zone(true)
-                        .dark_color(Color("#000000"))
-                        .light_color(Color("#ffffff"))
-                        .build();
-                    let data_url = format!("data:image/svg+xml;utf8,{}", urlencoding::encode(&image));
-                    Some(data_url)
-                }
-                Err(_) => None,
-            }
+            generate_qr_code_data_url(&qr_target, state.qr_logo_path.as_deref())
         } else { None };
         return Json(serde_json::json!({"success": true, "short_url": short_url, "qr_code_data": qr_code_data})).into_response();
     }
@@ -1472,20 +1547,7 @@ pub async fn api_upload(State(state): State<AppState>, headers: HeaderMap, mut m
         let short_url = format!("{}/s/{}", state.base_url, short_code);
         let qr_code_data = if qr_required {
             let qr_target = ensure_absolute(&state.base_url, &short_url);
-            match QrCode::new(qr_target.as_bytes()) {
-                Ok(c) => {
-                    let image = c
-                        .render::<qrcode::render::svg::Color>()
-                        .min_dimensions(320,320)
-                        .quiet_zone(true)
-                        .dark_color(Color("#000000"))
-                        .light_color(Color("#ffffff"))
-                        .build();
-                    let data_url = format!("data:image/svg+xml;utf8,{}", urlencoding::encode(&image));
-                    Some(data_url)
-                }
-                Err(_) => None,
-            }
+            generate_qr_code_data_url(&qr_target, state.qr_logo_path.as_deref())
         } else { None };
         return Json(serde_json::json!({"success": true, "short_url": short_url, "qr_code_data": qr_code_data})).into_response();
     }
@@ -1695,6 +1757,7 @@ pub async fn api_notepad(State(state): State<AppState>, headers: HeaderMap, mut 
     
     let mut content: Option<String> = None;
     let mut custom_code_raw: Option<String> = None;
+    let mut qr_required: bool = false;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("");
@@ -1710,6 +1773,9 @@ pub async fn api_notepad(State(state): State<AppState>, headers: HeaderMap, mut 
                 if let Ok(v) = field.text().await {
                     custom_code_raw = Some(v);
                 }
+            }
+            "qr_required" => {
+                if let Ok(v) = field.text().await { qr_required = v.trim().eq_ignore_ascii_case("true"); }
             }
             _ => {}
         }
@@ -1760,7 +1826,11 @@ pub async fn api_notepad(State(state): State<AppState>, headers: HeaderMap, mut 
     };
 
     let short_url = format!("{}/n/{}", state.base_url, code);
-    Json(serde_json::json!({"success": true, "short_url": short_url})).into_response()
+    let qr_code_data = if qr_required {
+        let qr_target = ensure_absolute(&state.base_url, &short_url);
+        generate_qr_code_data_url(&qr_target, state.qr_logo_path.as_deref())
+    } else { None };
+    Json(serde_json::json!({"success": true, "short_url": short_url, "qr_code_data": qr_code_data})).into_response()
 }
 
 pub async fn notepad_handler(State(state): State<AppState>, Path(code): Path<String>) -> axum::response::Response {
