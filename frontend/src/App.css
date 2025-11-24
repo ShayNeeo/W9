@@ -368,6 +368,58 @@ table td {
   content: "· ";
 }
 
+.sponsorship {
+  gap: 1rem;
+}
+
+.sponsor-logos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.sponsor-card {
+  border: 2px solid var(--border);
+  padding: 0.75rem;
+  width: min(280px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sponsor-logo {
+  width: 100%;
+  border: 2px solid var(--border);
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #050505;
+}
+
+.sponsor-logo img,
+.sponsor-logo svg {
+  max-width: 180px;
+  width: 100%;
+  height: auto;
+}
+
+.sponsor-credit {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.sponsor-footnote {
+  margin: 0;
+  text-align: center;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
 code {
   background: var(--bg);
   border: 1px solid var(--border);
