@@ -5,6 +5,7 @@ W9 Tools is a lightweight utility stack for instant link shortening, markdown no
 ## Table of Contents
 
 - [Overview](#overview)
+- [Sponsorship](#sponsorship)
 - [For Website Users](#for-website-users)
   - [Getting Started](#getting-started)
   - [Short Links](#short-links)
@@ -41,6 +42,19 @@ W9 Tools provides:
 - **Database**: SQLite (single file)
 - **Storage**: Local filesystem (`uploads/`)
 - **Deployment**: Systemd service + Nginx reverse proxy
+
+---
+
+## Sponsorship
+
+W9 Tools is community-funded. Two core partners currently cover operational costs:
+
+| Sponsor | Contribution |
+|---------|-------------|
+| **1Password** | Secure credential vault and secrets management for the release team. |
+| **Sentry** | “Sentry automatically detects and notifies you of critical performance issues so you can trace every slow transaction to a poor-performing API call or DB query.” |
+
+Want to help? Email [hi@w9.nu](mailto:hi@w9.nu) to get involved or be listed here.
 
 ---
 

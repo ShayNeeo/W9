@@ -1046,7 +1046,9 @@ function Homepage() {
                   ></path>
                 </svg>
               </div>
-              <p className="sponsor-credit">Infrastructure grant · credited to W9 Labs supporters</p>
+              <p className="sponsor-credit">
+                Sentry automatically detects and notifies you of critical performance issues so you can trace every slow transaction to a poor-performing API call or DB query.
+              </p>
             </div>
           </div>
           <p className="sponsor-footnote">Credits curated by W9 Labs · reach out via hi@w9.nu to be listed here.</p>
