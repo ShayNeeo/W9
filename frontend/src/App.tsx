@@ -1052,7 +1052,9 @@ function Homepage() {
             </div>
             <div className="sponsor-card">
               <div className="sponsor-logo" aria-label="Algolia">
-                <img src="/algolia.png" alt="Algolia logo" />
+                <a href="https://www.algolia.com/?utm_medium=AOS-referral" target="_blank" rel="noreferrer">
+                  <img src="/algolia.png" alt="Algolia logo" />
+                </a>
               </div>
               <p className="sponsor-credit">Courtesy of Algolia · search infrastructure partner</p>
             </div>
