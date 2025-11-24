@@ -420,6 +420,11 @@ table td {
   color: var(--muted);
 }
 
+.sponsor-intro {
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
 code {
   background: var(--bg);
   border: 1px solid var(--border);

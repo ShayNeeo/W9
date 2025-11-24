@@ -1020,7 +1020,7 @@ function Homepage() {
 
         <section className="box sponsorship">
           <h2 className="section-title">Sponsorship</h2>
-          <p>
+          <p className="sponsor-intro">
             These organizations keep the lights on for the community build process. Their tooling and kindness help W9 Labs continue releasing open infrastructure.
           </p>
           <div className="sponsor-logos">
