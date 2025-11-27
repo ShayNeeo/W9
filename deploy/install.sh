@@ -82,9 +82,9 @@ fi
 if [ "$BACKEND_NEEDS_BUILD" = "true" ]; then
     echo "Building backend..."
     if [ "$BUILD_USER" != "root" ]; then
-        sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && cargo build --release" 2>&1 | tail -2
+        sudo -u $BUILD_USER bash -lc "cd '$ROOT_DIR' && cargo build --release"
     else
-        bash -lc "cd '$ROOT_DIR' && cargo build --release" 2>&1 | tail -2
+        bash -lc "cd '$ROOT_DIR' && cargo build --release"
     fi
 else
     echo "✓ Backend is up to date, skipping rebuild"
