@@ -1138,14 +1138,14 @@ fn embed_logo_in_qr(qr_svg: &str, logo_path: &str) -> Result<String, Box<dyn std
     if let Some(pos) = qr_svg.rfind("</svg>") {
         let mut result = qr_svg[..pos].to_string();
         let bg_rect = format!(
-            r#"<rect x="{bg_x}" y="{bg_y}" width="{bg_size}" height="{bg_size}" rx="{radius}" fill="#ffffff"/>"#,
+            r##"<rect x="{bg_x}" y="{bg_y}" width="{bg_size}" height="{bg_size}" rx="{radius}" fill="#ffffff"/>"##,
             bg_x = bg_x,
             bg_y = bg_y,
             bg_size = bg_size,
             radius = logo_size * 0.08
         );
         let logo_img = format!(
-            r#"<image href="{logo_data_uri}" x="{logo_x}" y="{logo_y}" width="{logo_size}" height="{logo_size}" preserveAspectRatio="xMidYMid meet"/>"#,
+            r##"<image href="{logo_data_uri}" x="{logo_x}" y="{logo_y}" width="{logo_size}" height="{logo_size}" preserveAspectRatio="xMidYMid meet"/>"##,
             logo_data_uri = logo_data_uri,
             logo_x = logo_x,
             logo_y = logo_y,
