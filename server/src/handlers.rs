@@ -1064,7 +1064,7 @@ fn generate_qr_code_with_border(url: &str, logo_path: Option<&str>) -> Option<St
             let qr_svg = c
                 .render::<Color>()
                 .min_dimensions(320, 320)
-                .quiet_zone(true)
+                .quiet_zone(false)
                 .dark_color(Color("#000000"))
                 .light_color(Color("#ffffff"))
                 .build();
@@ -1126,7 +1126,7 @@ fn embed_logo_in_qr(qr_svg: &str, logo_path: &str) -> Result<String, Box<dyn std
     };
     
     // Logo should be small enough to avoid covering finder patterns (~14% of size)
-    let logo_size = qr_size * 0.14;
+    let logo_size = qr_size * 0.12;
     let logo_x = (qr_size - logo_size) / 2.0;
     let logo_y = (qr_size - logo_size) / 2.0;
     let logo_bg_padding = logo_size * 0.2;
