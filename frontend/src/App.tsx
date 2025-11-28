@@ -1013,6 +1013,7 @@ function Homepage() {
           <div className="actions" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
             <a href="https://w9.se" className="button ghost" target="_blank" rel="noreferrer">HQ · w9.se</a>
             <a href="https://w9.nu" className="button ghost" target="_blank" rel="noreferrer">Hub · w9.nu</a>
+            <a href="https://github.com/w9labs" className="button ghost" target="_blank" rel="noreferrer">GitHub · w9labs</a>
           </div>
           <p style={{ marginBottom: '1.5rem' }}>
             <b>W9 Labs</b> is a non-profit collective dedicated to building accessible, transparent, and robust open-source software. We believe technology should be a commons, built by the community, for the community.
