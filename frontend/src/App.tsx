@@ -1124,6 +1124,16 @@ function Homepage() {
               </div>
               <p className="sponsor-credit">FOSSVPS provides infrastructure for open-source developers.</p>
             </div>
+            <div className="sponsor-card">
+              <div className="sponsor-logo" aria-label="Termius">
+                <a href="https://termius.com" target="_blank" rel="noreferrer">
+                  <img src="/termius.png" alt="Termius logo" />
+                </a>
+              </div>
+              <p className="sponsor-credit">
+                <a href="https://termius.com" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Termius</a> provides a secure, reliable, and collaborative SSH client.
+              </p>
+            </div>
           </div>
           <p className="sponsor-footnote">Credits curated by W9 Labs · reach out via hi@w9.se to be listed here.</p>
         </section>
