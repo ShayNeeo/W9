@@ -1135,6 +1135,16 @@ function Homepage() {
                 <a href="https://termius.com" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Termius</a> provides a secure, reliable, and collaborative SSH client.
               </p>
             </div>
+            <div className="sponsor-card">
+              <div className="sponsor-logo" aria-label="CloudNest" style={{ background: '#ffffff' }}>
+                <a href="https://cloudnest.vn" target="_blank" rel="noreferrer">
+                  <img src="/cloudnest.png" alt="CloudNest logo" />
+                </a>
+              </div>
+              <p className="sponsor-credit">
+                <a href="https://cloudnest.vn" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>CloudNest</a> provides high-performance cloud infrastructure with Tier 3 data centers, NVMe SSD storage, and 100% uptime for tools, apps, and automation.
+              </p>
+            </div>
           </div>
           <p className="sponsor-footnote">Credits curated by W9 Labs · reach out via hi@w9.se to be listed here.</p>
         </section>
