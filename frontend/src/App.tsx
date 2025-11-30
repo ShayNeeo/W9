@@ -1680,6 +1680,12 @@ function PrivacyPage() {
           </p>
         </section>
         <section className="box">
+          <h2 className="section-title">Data Sharing & Disclosure</h2>
+          <p>
+            We do not sell, rent, or share your data with advertisers, data brokers, or any third parties beyond what is strictly necessary to provide the service. Your account data, uploaded files, URLs, and note contents are: (1) processed by Cloudflare Turnstile for bot protection (only verification tokens, not personal content), (2) transmitted to W9 Mail when you enable email integrations (only metadata required for delivery), and (3) stored locally on servers you control. We do not transfer your data to any other services, partners, or entities. All data processing occurs on your own infrastructure, and we never share your content with advertisers, analytics companies, or data brokers.
+          </p>
+        </section>
+        <section className="box">
           <h2 className="section-title">Questions</h2>
           <p>
             Email <a href="mailto:hi@w9.se">hi@w9.se</a> for export/delete requests. W9 Labs is a non-profit collective based in the
