@@ -1145,6 +1145,16 @@ function Homepage() {
                 <a href="https://cloudnest.vn" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>CloudNest</a> provides high-performance cloud infrastructure with Tier 3 data centers, NVMe SSD storage, and 100% uptime for tools, apps, and automation.
               </p>
             </div>
+            <div className="sponsor-card">
+              <div className="sponsor-logo" aria-label="Pollinations">
+                <a href="https://pollinations.ai" target="_blank" rel="noreferrer">
+                  <img src="/pollinations.jpg" alt="Pollinations logo" />
+                </a>
+              </div>
+              <p className="sponsor-credit">
+                <a href="https://pollinations.ai" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Pollinations</a> is an open-source gen AI platform based in Berlin, powering 500+ community projects with accessible text and image generation APIs.
+              </p>
+            </div>
           </div>
           <p className="sponsor-footnote">Credits curated by W9 Labs · reach out via hi@w9.se to be listed here.</p>
         </section>
