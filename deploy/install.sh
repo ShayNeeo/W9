@@ -118,15 +118,34 @@ fi
 if [ "$FRONTEND_NEEDS_BUILD" = "true" ]; then
     echo "Building frontend..."
     cd "$ROOT_DIR/frontend"
-    # Optionally update package.json versions with npm-check-updates (best-effort)
+    # Optionally update package.json versions with npm-check-updates
     if [ "${AUTO_UPDATE_PACKAGE_JSON:-1}" != "0" ]; then
-        echo "Updating package.json dependency ranges with npm-check-updates (best-effort)..."
-        npx npm-check-updates@latest -u 2>&1 | tail -1 || echo "⚠ npm-check-updates failed (continuing with existing ranges)"
+        if [ "${AUTO_UPDATE_CORE_DEPS:-0}" != "0" ]; then
+            echo "Updating package.json dependency ranges with npm-check-updates (including React/Next core deps)..."
+            npx npm-check-updates@latest -u 2>&1 | tail -1 \
+              || echo "⚠ npm-check-updates failed (continuing with existing ranges)"
+        else
+            echo "Updating package.json dependency ranges with npm-check-updates (best-effort, core deps pinned)..."
+            # Default: do not auto-bump core framework deps to avoid Next/React peer conflicts
+            npx npm-check-updates@latest -u --reject react,react-dom,next,eslint-config-next,@types/react,@types/react-dom 2>&1 | tail -1 \
+              || echo "⚠ npm-check-updates failed (continuing with existing ranges)"
+        fi
     fi
 
     # Always install/update to latest compatible dependencies within current ranges
     echo "Installing npm dependencies..."
-    npm install --prefer-offline --no-audit 2>&1 | tail -1
+    if [ "${AUTO_UPDATE_CORE_DEPS:-0}" != "0" ]; then
+        # When core deps move, allow npm to relax peer resolution to avoid ERESOLVE loops
+        npm install --prefer-offline --no-audit --legacy-peer-deps 2>&1 | tail -1 || {
+            echo "ERROR: npm install failed (even with --legacy-peer-deps)"
+            exit 1
+        }
+    else
+        npm install --prefer-offline --no-audit 2>&1 | tail -1 || {
+            echo "ERROR: npm install failed"
+            exit 1
+        }
+    fi
 
     echo "Updating npm packages to latest compatible versions..."
     npm update --no-audit 2>&1 | tail -1 || echo "⚠ npm update failed (continuing with installed versions)"
