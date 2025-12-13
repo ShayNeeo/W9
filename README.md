@@ -189,52 +189,64 @@ QR codes are generated for all short links when requested.
 
 ### Prerequisites
 
-- Ubuntu/Debian server with sudo access
-- Git
-- Rust toolchain (installed automatically)
-- Node.js 18+ and npm (installed automatically)
+- Docker and Docker Compose installed on your VPS
+- GitHub Container Registry (GHCR) access configured
 - Domain pointing to the server (optional but recommended)
 
-### Quick Installation
+### Docker Deployment
 
-1. **Clone the repository:**
+This project uses **Docker with CI/CD** for deployment. Images are automatically built and pushed to GitHub Container Registry on every push to `main`.
+
+#### Quick Start
+
+1. **Set up deployment on your VPS:**
+   
+   Clone the repository and configure environment variables:
+   
    ```bash
-   git clone https://github.com/ShayNeeo/w9-tools.git
+   # On your VPS
+   git clone https://github.com/your-username/w9-tools.git
    cd w9-tools
+   
+   # Configure environment variables
+   cp .env.example .env
+   nano .env
    ```
 
-2. **Run the installer with environment variables:**
+2. **Login to GitHub Container Registry (if using private images):**
    ```bash
-   DOMAIN=w9.se \
-   BASE_URL=https://w9.se \
-   W9_MAIL_API_URL=https://w9.nu \
-   W9_MAIL_API_TOKEN=your-jwt-token-from-w9-mail \
-   sudo -E ./deploy/install.sh
+   echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
    ```
 
-The installer performs:
-- Installs required packages (Rust, Node.js, nginx, sqlite, etc.)
-- Builds the backend (`cargo build --release`)
-- Builds the frontend (`npm ci && npm run build`)
-- Deploys binary to `/opt/w9`
-- Deploys frontend to `/var/www/w9`
-- Creates systemd service (`w9.service`)
-- Configures nginx reverse proxy with TLS
-- Sets up environment variables in `/etc/default/w9`
-- Opens ports 80/443 via ufw
-
-3. **Verify installation:**
+3. **Deploy with Docker Compose:**
    ```bash
-   systemctl status w9
-   journalctl -u w9 -f
+   # Pull latest images
+   docker-compose pull
+   
+   # Start services
+   docker-compose up -d
    ```
 
-4. **Access the web interface:**
+4. **View logs:**
+   ```bash
+   docker-compose logs -f w9-tools-backend
+   ```
+
+5. **Access the web interface:**
    Visit `https://your-domain` in your browser
+
+### CI/CD
+
+The project includes a GitHub Actions workflow (`.github/workflows/docker-build.yml`) that:
+- Builds both backend and frontend Docker images on every push to `main`
+- Pushes images to `ghcr.io/<your-username>/w9-tools-backend` and `w9-tools-frontend`
+- Tags images with `latest` and commit SHA
+
+**Watchtower** (included in docker-compose.yml) automatically updates containers when new images are pushed.
 
 ### Configuration
 
-Configuration is stored in `/etc/default/w9` (created by the installer).
+Configuration is managed via environment variables in the `.env` file. Copy `.env.example` to `.env` and fill in your values.
 
 #### Environment Variables
 
@@ -258,45 +270,47 @@ Configuration is stored in `/etc/default/w9` (created by the installer).
 
 #### Updating Configuration
 
-1. Edit `/etc/default/w9`:
+1. Edit `.env` file:
    ```bash
-   sudo nano /etc/default/w9
+   nano .env
    ```
 
-2. Restart the service:
+2. Restart the containers:
    ```bash
-   sudo systemctl restart w9
+   docker-compose restart w9-tools-backend w9-tools-frontend
    ```
 
 ### Service Management
 
 #### Check Service Status
 ```bash
-systemctl status w9
+docker-compose ps
 ```
 
 #### View Logs
 ```bash
 # Follow logs in real-time
-journalctl -u w9 -f
+docker-compose logs -f w9-tools-backend
 
 # View recent logs
-journalctl -u w9 -n 100
+docker-compose logs --tail=100 w9-tools-backend
 ```
 
 #### Restart Service
 ```bash
-sudo systemctl restart w9
+docker-compose restart w9-tools-backend
 ```
 
-#### Redeploy After Code Changes
+#### Update to Latest Version
 ```bash
-cd /path/to/w9-tools
-git pull
-sudo -E ./deploy/install.sh
+# Pull latest images
+docker-compose pull
+
+# Restart with new images
+docker-compose up -d
 ```
 
-> **Note**: The installer detects changes and only rebuilds what's necessary. To force a frontend rebuild, remove `frontend/dist` before running the installer.
+> **Note**: Watchtower automatically updates containers when new images are pushed to the registry. Manual updates are only needed if you want to update immediately.
 
 ### Email Integration
 
