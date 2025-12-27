@@ -15,7 +15,7 @@ use mime_guess::from_path as mime_from_path;
 use nanoid::nanoid;
 use qrcode::render::svg::Color;
 use qrcode::QrCode;
-use sqlx::{PgPool, Row};
+use rusqlite::{params, Connection, Error as SqliteError, ErrorCode, OptionalExtension};
 use std::path::{Path as StdPath}; // Use StdPath to avoid conflict with axum::extract::Path
 use std::sync::Arc;
 use tokio::fs;
@@ -250,7 +250,7 @@ fn try_generate_preview(original_path: &StdPath, preview_path: &StdPath) -> Resu
 
 #[derive(Clone)]
 pub struct AppState { 
-    pub pool: sqlx::PgPool,
+    pub db_path: String, 
     pub base_url: String,
     pub uploads_dir: String,
     pub w9_mail_api_url: String,
@@ -296,7 +296,7 @@ async fn verify_turnstile(secret: &str, token: &str) -> Result<bool, String> {
     }
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone)]
 struct UserRecord {
     id: String,
     email: String,
@@ -451,13 +451,23 @@ fn fetch_user_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Optio
     .optional()
 }
 
-async fn fetch_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<UserRecord>, sqlx::Error> {
-    sqlx::query_as::<_, UserRecord>(
-        "SELECT id, email, password_hash, salt, role, must_change_password, is_verified FROM users WHERE id = $1",
+fn fetch_user_by_id(conn: &Connection, user_id: &str) -> rusqlite::Result<Option<UserRecord>> {
+    conn.query_row(
+        "SELECT id, email, password_hash, salt, role, COALESCE(must_change_password, 0), COALESCE(is_verified, 1) FROM users WHERE id = ?1",
+        params![user_id],
+        |row| {
+            Ok(UserRecord {
+                id: row.get(0)?,
+                email: row.get(1)?,
+                password_hash: row.get(2)?,
+                salt: row.get(3)?,
+                role: row.get(4)?,
+                must_change_password: row.get::<_, i64>(5)? != 0,
+                is_verified: row.get::<_, i64>(6)? != 0,
+            })
+        },
     )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
+    .optional()
 }
 
 fn issue_jwt(state: &AppState, user: &UserRecord) -> Result<String, String> {
@@ -770,55 +780,49 @@ enum SaveItemError {
     CodeExists,
 }
 
-async fn code_exists_for_kind(pool: &PgPool, code: &str, kind: &str) -> bool {
-    sqlx::query("SELECT 1 FROM items WHERE code = $1 AND kind = $2 LIMIT 1")
-        .bind(code)
-        .bind(kind)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None)
-        .is_some()
+fn code_exists_for_kind(db_path: &str, code: &str, kind: &str) -> bool {
+    if let Ok(conn) = Connection::open(db_path) {
+        if let Ok(mut stmt) = conn.prepare("SELECT 1 FROM items WHERE code = ?1 AND kind = ?2 LIMIT 1") {
+            return stmt.query_row(params![code, kind], |_| Ok(())).is_ok();
+        }
+    }
+    false
 }
 
-async fn insert_item_record(pool: &PgPool, code: &str, kind: &str, value: &str, user_id: Option<&str>) -> Result<(), SaveItemError> {
-    if code_exists_for_kind(pool, code, kind).await {
+fn insert_item_record(db_path: &str, code: &str, kind: &str, value: &str, user_id: Option<&str>) -> Result<(), SaveItemError> {
+    // Check if code already exists for this specific kind
+    if code_exists_for_kind(db_path, code, kind) {
         return Err(SaveItemError::CodeExists);
     }
     
-    match sqlx::query("INSERT INTO items(code, kind, value, created_at, user_id) VALUES ($1, $2, $3, EXTRACT(EPOCH FROM NOW())::BIGINT, $4)")
-        .bind(code)
-        .bind(kind)
-        .bind(value)
-        .bind(user_id)
-        .execute(pool)
-        .await
-    {
+    let conn = Connection::open(db_path).map_err(|e| SaveItemError::Database(e.to_string()))?;
+    match conn.execute(
+        "INSERT INTO items(code, kind, value, created_at, user_id) VALUES (?1, ?2, ?3, strftime('%s','now'), ?4)",
+        params![code, kind, value, user_id],
+    ) {
         Ok(_) => Ok(()),
-        Err(e) => {
-            if e.to_string().contains("duplicate key") {
-                 Err(SaveItemError::CodeExists)
-            } else {
-                 Err(SaveItemError::Database(e.to_string()))
-            }
+        Err(SqliteError::SqliteFailure(err, _)) if err.code == ErrorCode::ConstraintViolation => {
+            Err(SaveItemError::CodeExists)
         }
+        Err(e) => Err(SaveItemError::Database(e.to_string())),
     }
 }
 
-async fn save_item(
-    pool: &PgPool,
+fn save_item(
+    db_path: &str,
     preferred_code: Option<&String>,
     kind: &str,
     value: &str,
     user_id: Option<&str>,
 ) -> Result<String, SaveItemError> {
     if let Some(code) = preferred_code {
-        insert_item_record(pool, code, kind, value, user_id).await?;
+        insert_item_record(db_path, code, kind, value, user_id)?;
         return Ok(code.clone());
     }
 
     for _ in 0..5 {
         let generated = nanoid!(8);
-        match insert_item_record(pool, &generated, kind, value, user_id).await {
+        match insert_item_record(db_path, &generated, kind, value, user_id) {
             Ok(_) => return Ok(generated),
             Err(SaveItemError::CodeExists) => continue,
             Err(e) => return Err(e),
@@ -843,15 +847,18 @@ fn ensure_absolute(base: &str, url: &str) -> String {
 }
 
 pub async fn result_handler(State(state): State<AppState>, Path(code): Path<String>, Query(q): Query<std::collections::HashMap<String,String>>) -> (StatusCode, String) {
-    let row = sqlx::query("SELECT kind, value FROM items WHERE code = $1 LIMIT 1")
-        .bind(&code)
-        .fetch_optional(&state.pool)
-        .await
-        .unwrap_or(None);
-
-    let (_kind, _value): (String, String) = match row {
-        Some(r) => (r.get(0), r.get(1)),
-        None => return (StatusCode::NOT_FOUND, r#"{"error":"Not found"}"#.to_string()),
+    let conn = match Connection::open(&state.db_path) {
+        Ok(c) => c,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":"Database error"}"#.to_string()),
+    };
+    // Get any item with this code (for backward compatibility with /r/ endpoint)
+    let mut stmt = match conn.prepare("SELECT kind, value FROM items WHERE code = ?1 LIMIT 1") {
+        Ok(s) => s,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":"Database error"}"#.to_string()),
+    };
+    let (_kind, _value) = match stmt.query_row(params![code.clone()], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+        Ok(v) => v,
+        Err(_) => return (StatusCode::NOT_FOUND, r#"{"error":"Not found"}"#.to_string()),
     };
     let short_link = format!("{}/s/{}", state.base_url, code);
     let qr_svg = if q.get("qr").map(|v| v=="1").unwrap_or(false) {
@@ -869,14 +876,26 @@ pub async fn result_handler(State(state): State<AppState>, Path(code): Path<Stri
 
 pub async fn short_handler(State(state): State<AppState>, Path(code): Path<String>, headers: HeaderMap) -> axum::response::Response {
     let (kind, value) = {
-        let row = sqlx::query("SELECT kind, value FROM items WHERE code = $1 AND kind IN ('url', 'file') LIMIT 1")
-            .bind(&code)
-            .fetch_optional(&state.pool)
-            .await;
-            
-        match row {
-            Ok(Some(r)) => (r.get::<String, _>(0), r.get::<String, _>(1)),
-            Ok(None) => return (StatusCode::NOT_FOUND, "Not found").into_response(),
+        let conn = match Connection::open(&state.db_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to open database: {}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response();
+            }
+        };
+        // Try to get url or file (not notepad) - /s/ is for short links
+        let mut stmt = match conn.prepare("SELECT kind, value FROM items WHERE code = ?1 AND kind IN ('url', 'file') LIMIT 1") {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Failed to prepare statement: {}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response();
+            }
+        };
+        match stmt.query_row(params![code.clone()], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+            Ok(v) => v,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return (StatusCode::NOT_FOUND, "Not found").into_response();
+            }
             Err(e) => {
                 tracing::error!("Database query error: {}", e);
                 return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response();
@@ -1199,7 +1218,9 @@ where
         let token_data = decode::<Claims>(token, &decoding_key, &Validation::default())
             .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid or expired token"))?;
 
-        let user = fetch_user_by_id(&app_state.pool, &token_data.claims.sub).await
+        let conn = Connection::open(&app_state.db_path)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        let user = fetch_user_by_id(&conn, &token_data.claims.sub)
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
             .ok_or((StatusCode::UNAUTHORIZED, "User not found"))?;
 
@@ -1258,10 +1279,23 @@ where
 #[debug_handler]
 pub async fn admin_items(State(state): State<AppState>, AdminUser(_): AdminUser) -> impl IntoResponse {
     
-    let rows = match sqlx::query("SELECT code, kind, value, created_at FROM items ORDER BY created_at DESC LIMIT 500")
-        .fetch_all(&state.pool)
-        .await
-    {
+    let conn = match Connection::open(&state.db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to open database: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"Database error"}))).into_response();
+        }
+    };
+    
+    let mut stmt = match conn.prepare("SELECT code, kind, value, created_at FROM items ORDER BY created_at DESC LIMIT 500") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to prepare statement: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"Query error"}))).into_response();
+        }
+    };
+    
+    let rows = match stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?))) {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Failed to query items: {}", e);
@@ -1271,17 +1305,14 @@ pub async fn admin_items(State(state): State<AppState>, AdminUser(_): AdminUser)
     
     let mut items: Vec<serde_json::Value> = Vec::new();
     for row in rows {
-        let code: String = row.get(0);
-        let kind: String = row.get(1);
-        let value: String = row.get(2);
-        let created_at: i64 = row.get(3);
-        
-        items.push(serde_json::json!({
-            "code": code,
-            "kind": kind,
-            "value": value,
-            "created_at": created_at
-        }));
+        if let Ok((code, kind, value, created_at)) = row {
+            items.push(serde_json::json!({
+                "code": code,
+                "kind": kind,
+                "value": value,
+                "created_at": created_at
+            }));
+        }
     }
     
     (StatusCode::OK, Json(items)).into_response()
@@ -1463,7 +1494,7 @@ pub async fn api_upload(State(state): State<AppState>, headers: HeaderMap, mut m
 
     if let Some(filename_saved) = saved_filename {
         let original = format!("file:{}", filename_saved);
-        let short_code = match save_item(&state.pool, custom_code.as_ref(), "file", &original, user_id.as_deref()).await {
+        let short_code = match save_item(&state.db_path, custom_code.as_ref(), "file", &original, user_id.as_deref()) {
             Ok(code) => code,
             Err(SaveItemError::CodeExists) => {
                 let msg = if custom_code.is_some() {
@@ -1499,7 +1530,7 @@ pub async fn api_upload(State(state): State<AppState>, headers: HeaderMap, mut m
 
     if let Some(link) = link_value {
         if !link.starts_with("http://") && !link.starts_with("https://") { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "Invalid URL"}))).into_response(); }
-        let short_code = match save_item(&state.pool, custom_code.as_ref(), "url", &link, user_id.as_deref()).await {
+        let short_code = match save_item(&state.db_path, custom_code.as_ref(), "url", &link, user_id.as_deref()) {
             Ok(code) => code,
             Err(SaveItemError::CodeExists) => {
                 let msg = if custom_code.is_some() {
