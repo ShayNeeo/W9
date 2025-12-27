@@ -1330,7 +1330,6 @@ pub async fn admin_delete_item_with_kind(
 }
 
 #[debug_handler]
-#[debug_handler]
 pub async fn admin_delete_item(
     State(state): State<AppState>,
     Path(code): Path<String>,
@@ -2243,7 +2242,7 @@ pub struct UpdateEmailSenderRequest {
     pub via_display: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, sqlx::FromRow)]
 struct AdminUserSummary {
     id: String,
     email: String,
@@ -2522,6 +2521,7 @@ pub async fn confirm_password_reset(
 }
 
 // Change password - forwards to w9-mail
+// Change password
 pub async fn change_password(
     State(state): State<AppState>,
     user: AuthUser,
@@ -2542,19 +2542,7 @@ pub async fn change_password(
         .into_response();
     }
 
-    let conn = match Connection::open(&state.db_path) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to open database: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "Database error"})),
-            )
-                .into_response();
-        }
-    };
-
-    let Some(user_record) = fetch_user_by_id(&conn, &user.id).unwrap_or(None) else {
+    let Some(user_record) = fetch_user_by_id(&state.pool, &user.id).await.unwrap_or(None) else {
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "User not found"})),
@@ -2574,10 +2562,13 @@ pub async fn change_password(
     let new_salt = generate_token(32);
     let new_hash = hash_with_salt(&payload.new_password, &new_salt);
 
-    match conn.execute(
-        "UPDATE users SET password_hash = ?1, salt = ?2, must_change_password = 0 WHERE id = ?3",
-        params![new_hash, new_salt, user.id],
-    ) {
+    match sqlx::query("UPDATE users SET password_hash = $1, salt = $2, must_change_password = FALSE WHERE id = $3")
+        .bind(new_hash)
+        .bind(new_salt)
+        .bind(user.id)
+        .execute(&state.pool)
+        .await
+    {
         Ok(_) => (
             StatusCode::OK,
             Json(serde_json::json!({"message": "Password changed successfully"})),
