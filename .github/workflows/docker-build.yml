@@ -8,14 +8,49 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}
 
 jobs:
-  build-backend:
-    runs-on: ubuntu-latest
+  build-images:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Backend
+          - service: backend
+            runner: ubuntu-latest
+            platform: linux/amd64
+            tag_suffix: -amd64
+            context: .
+            file: ./server/Dockerfile.build
+            image_name: w9-tools-backend
+          - service: backend
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            tag_suffix: -arm64
+            context: .
+            file: ./server/Dockerfile.build
+            image_name: w9-tools-backend
+          # Frontend
+          - service: frontend
+            runner: ubuntu-latest
+            platform: linux/amd64
+            tag_suffix: -amd64
+            context: ./frontend
+            file: ./frontend/Dockerfile.build
+            image_name: w9-tools-frontend
+          - service: frontend
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            tag_suffix: -arm64
+            context: ./frontend
+            file: ./frontend/Dockerfile.build
+            image_name: w9-tools-frontend
+    
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,41 +67,44 @@ jobs:
 
       - name: Downcase Image Name
         run: |
-          echo "IMAGE_NAME=${{ env.REGISTRY }}/$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')/w9-tools-backend" >> $GITHUB_ENV
+          REPO_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')
+          echo "FULL_IMAGE_NAME=${{ env.REGISTRY }}/${REPO_OWNER}/${{ matrix.image_name }}" >> $GITHUB_ENV
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+          images: ${{ env.FULL_IMAGE_NAME }}
+          tags: type=sha,format=short
 
-      - name: Build and push backend
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./server/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          tags: ${{ env.FULL_IMAGE_NAME }}:${{ github.sha }}${{ matrix.tag_suffix }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-frontend:
+  merge-manifests:
+    needs: build-images
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend, frontend]
+        include:
+          - service: backend
+            image_name: w9-tools-backend
+          - service: frontend
+            image_name: w9-tools-frontend
+    
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -76,26 +114,22 @@ jobs:
 
       - name: Downcase Image Name
         run: |
-          echo "IMAGE_NAME=${{ env.REGISTRY }}/$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')/w9-tools-frontend" >> $GITHUB_ENV
+          REPO_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')
+          echo "FULL_IMAGE_NAME=${{ env.REGISTRY }}/${REPO_OWNER}/${{ matrix.image_name }}" >> $GITHUB_ENV
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+      - name: Create and push manifest list
+        run: |
+          IMAGE="${{ env.FULL_IMAGE_NAME }}"
+          SHA="${{ github.sha }}"
+          
+          # Create manifest for SHA tag
+          docker buildx imagetools create -t "${IMAGE}:${SHA}" \
+            "${IMAGE}:${SHA}-amd64" \
+            "${IMAGE}:${SHA}-arm64"
+          
+          # If on main branch, also tag as latest
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            docker buildx imagetools create -t "${IMAGE}:latest" \
+              "${IMAGE}:${SHA}-amd64" \
+              "${IMAGE}:${SHA}-arm64"
+          fi
